@@ -1,0 +1,7 @@
+governance:
+  hallucination_threshold: 0.1
+  consistency_checks_enabled: true
+  citation_strictness: high
+  compliance_rules:
+    - forward_looking_statements_must_have_safe_harbor
+    - financial_projections_must_have_basis

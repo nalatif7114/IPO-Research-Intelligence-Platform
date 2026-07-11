@@ -1,0 +1,45 @@
+agents:
+  - name: document_intake
+    enabled: true
+    timeout_seconds: 60
+    max_retries: 3
+  - name: parser_ocr
+    enabled: true
+    timeout_seconds: 300
+    max_retries: 3
+  - name: chunking_embedding
+    enabled: true
+    timeout_seconds: 300
+    max_retries: 3
+  - name: retrieval
+    enabled: true
+    timeout_seconds: 60
+    max_retries: 3
+  - name: business_analysis
+    enabled: true
+    timeout_seconds: 300
+    max_retries: 3
+  - name: financial_analysis
+    enabled: true
+    timeout_seconds: 300
+    max_retries: 3
+  - name: valuation
+    enabled: true
+    timeout_seconds: 120
+    max_retries: 3
+  - name: risk_assessment
+    enabled: true
+    timeout_seconds: 120
+    max_retries: 3
+  - name: governance
+    enabled: true
+    timeout_seconds: 120
+    max_retries: 3
+  - name: report_generator
+    enabled: true
+    timeout_seconds: 120
+    max_retries: 3
+  - name: evaluation
+    enabled: true
+    timeout_seconds: 60
+    max_retries: 3
