@@ -74,12 +74,27 @@ class MockLLMProvider(LLMProvider):
     async def generate_text(self, prompt: str) -> str:
         return "This is a mocked LLM text response based on the provided context."
 
+import asyncio
+import os
+from typing import TypeVar, Type
+from pydantic import BaseModel
+from tenacity import retry, stop_after_attempt, wait_exponential
+import structlog
+from langchain_google_genai import ChatGoogleGenerativeAI
+
+logger = structlog.stdlib.get_logger(__name__)
+
+T = TypeVar("T", bound=BaseModel)
+
+# Global semaphore to limit Gemini API concurrency (e.g., 2 max parallel requests for free tier)
+_gemini_semaphore = asyncio.Semaphore(2)
+
 class GeminiProvider(LLMProvider):
     """Production-ready Gemini implementation with retries and structured output."""
     
     def __init__(
         self, 
-        model_name: str = "gemini-1.5-pro",
+        model_name: str = os.environ.get("DEFAULT_LLM_MODEL", "gemini-1.5-pro"),
         temperature: float = 0.1,
         top_p: float = 0.95,
         max_output_tokens: int = 8192,
@@ -100,15 +115,16 @@ class GeminiProvider(LLMProvider):
                 max_retries=0  # Handled by tenacity
             )
 
-    @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=4, max=10))
+    @retry(stop=stop_after_attempt(5), wait=wait_exponential(multiplier=2, min=5, max=30))
     async def generate_structured(self, prompt: str, schema: Type[T]) -> T:
         if not self.llm:
             raise Exception("Cannot generate structured output: GEMINI_API_KEY is missing.")
         structured_llm = self.llm.with_structured_output(schema)
         
         async def _invoke():
-            res = await structured_llm.ainvoke(prompt)
-            return res
+            async with _gemini_semaphore:
+                res = await structured_llm.ainvoke(prompt)
+                return res
             
         try:
             return await asyncio.wait_for(_invoke(), timeout=self.timeout_seconds)
@@ -119,14 +135,15 @@ class GeminiProvider(LLMProvider):
             logger.error("gemini_provider_error", error=str(e))
             raise
 
-    @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=4, max=10))
+    @retry(stop=stop_after_attempt(5), wait=wait_exponential(multiplier=2, min=5, max=30))
     async def generate_text(self, prompt: str) -> str:
         if not self.llm:
             raise Exception("Cannot generate text: GEMINI_API_KEY is missing.")
             
         async def _invoke():
-            res = await self.llm.ainvoke(prompt)
-            return res.content
+            async with _gemini_semaphore:
+                res = await self.llm.ainvoke(prompt)
+                return res.content
             
         try:
             return await asyncio.wait_for(_invoke(), timeout=self.timeout_seconds)

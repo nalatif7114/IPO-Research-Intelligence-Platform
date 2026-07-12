@@ -1,0 +1,191 @@
+{
+  "prospectuses": [
+    {
+      "company_name": "PT GoTo Gojek Tokopedia Tbk",
+      "document_id": "goto-ipo-2022",
+      "questions": [
+        {
+          "id": "q1",
+          "category": "Business",
+          "query": "What are the primary revenue streams for GoTo?",
+          "expected_chunk_ids": ["goto-biz-1", "goto-biz-2"],
+          "expected_citations": [
+            "Pendapatan utama GoTo berasal dari komisi layanan on-demand, e-commerce, dan financial technology.",
+            "Segmen e-commerce menyumbang lebih dari 40% total GTV perusahaan pada tahun 2021."
+          ]
+        },
+        {
+          "id": "q2",
+          "category": "Business",
+          "query": "Who are the main competitors of GoTo in Indonesia?",
+          "expected_chunk_ids": ["goto-biz-3"],
+          "expected_citations": [
+            "Kompetitor utama Perseroan di pasar Indonesia meliputi Grab dan Sea Group (Shopee)."
+          ]
+        },
+        {
+          "id": "q3",
+          "category": "Financial",
+          "query": "What is GoTo's reported EBITDA for 2021?",
+          "expected_chunk_ids": ["goto-fin-1"],
+          "expected_citations": [
+            "EBITDA disesuaikan GoTo untuk tahun penuh 2021 tercatat sebesar negatif Rp 16,2 triliun."
+          ]
+        },
+        {
+          "id": "q4",
+          "category": "Financial",
+          "query": "What is the Gross Transaction Value (GTV) target for GoTo?",
+          "expected_chunk_ids": ["goto-fin-2"],
+          "expected_citations": [
+            "Manajemen menargetkan pertumbuhan GTV sebesar 35% pada tahun 2022 menjadi Rp 600 triliun."
+          ]
+        },
+        {
+          "id": "q5",
+          "category": "Risk",
+          "query": "What are the primary regulatory risks facing GoTo?",
+          "expected_chunk_ids": ["goto-risk-1"],
+          "expected_citations": [
+            "Perseroan menghadapi risiko regulasi terkait perubahan undang-undang perlindungan data pribadi dan ketenagakerjaan mitra pengemudi."
+          ]
+        },
+        {
+          "id": "q6",
+          "category": "Risk",
+          "query": "What is the liquidity risk for GoTo?",
+          "expected_chunk_ids": ["goto-risk-2"],
+          "expected_citations": [
+            "Risiko likuiditas Perseroan dikelola melalui penerbitan saham baru dan ketersediaan fasilitas pinjaman bank senilai Rp 5 triliun."
+          ]
+        },
+        {
+          "id": "q7",
+          "category": "Governance",
+          "query": "How many independent commissioners are on GoTo's board?",
+          "expected_chunk_ids": ["goto-gov-1"],
+          "expected_citations": [
+            "Dewan Komisaris terdiri dari 9 anggota, dengan 4 di antaranya menjabat sebagai Komisaris Independen."
+          ]
+        },
+        {
+          "id": "q8",
+          "category": "Governance",
+          "query": "Are there any related party transactions disclosed by GoTo?",
+          "expected_chunk_ids": ["goto-gov-2"],
+          "expected_citations": [
+            "Transaksi dengan pihak berelasi (Related Party Transactions) mencakup pinjaman ke entitas asosiasi sebesar Rp 200 miliar yang dicatat dengan persyaratan wajar."
+          ]
+        },
+        {
+          "id": "q9",
+          "category": "Valuation",
+          "query": "What is the implied PBV multiple at the IPO price?",
+          "expected_chunk_ids": ["goto-val-1"],
+          "expected_citations": [
+            "Pada harga penawaran Rp 338 per saham, kapitalisasi pasar GoTo mencapai Rp 400 triliun, yang mengimplikasikan PBV sebesar 2.8x."
+          ]
+        },
+        {
+          "id": "q10",
+          "category": "Valuation",
+          "query": "What is the stated margin of safety for GoTo?",
+          "expected_chunk_ids": ["goto-val-2"],
+          "expected_citations": [
+            "Margin of safety dianggap terbatas karena valuasi yang premium dibandingkan kompetitor regional di tingkat EV/Sales."
+          ]
+        },
+        {
+          "id": "q11",
+          "category": "Business",
+          "query": "What is GoTo's competitive advantage?",
+          "expected_chunk_ids": ["goto-biz-4"],
+          "expected_citations": [
+            "Keunggulan kompetitif utama Perseroan adalah ekosistem yang terintegrasi (super-app) yang menggabungkan mobilitas, e-commerce, dan layanan keuangan."
+          ]
+        },
+        {
+          "id": "q12",
+          "category": "Financial",
+          "query": "What is GoTo's cash position prior to IPO?",
+          "expected_chunk_ids": ["goto-fin-3"],
+          "expected_citations": [
+            "Kas dan setara kas Perseroan per 31 Desember 2021 tercatat sebesar Rp 31,1 triliun."
+          ]
+        },
+        {
+          "id": "q13",
+          "category": "Risk",
+          "query": "What cybersecurity risks does GoTo face?",
+          "expected_chunk_ids": ["goto-risk-3"],
+          "expected_citations": [
+            "Perseroan rentan terhadap serangan siber yang dapat mengakibatkan kebocoran data jutaan pengguna dan berdampak pada reputasi."
+          ]
+        },
+        {
+          "id": "q14",
+          "category": "Governance",
+          "query": "Who is the head of the Audit Committee?",
+          "expected_chunk_ids": ["goto-gov-3"],
+          "expected_citations": [
+            "Komite Audit dipimpin oleh Bpk. Robertus Susanto, yang memiliki latar belakang lebih dari 20 tahun di bidang audit keuangan."
+          ]
+        },
+        {
+          "id": "q15",
+          "category": "Valuation",
+          "query": "What are the major catalysts for GoTo's stock?",
+          "expected_chunk_ids": ["goto-val-3"],
+          "expected_citations": [
+            "Katalis utama termasuk percepatan profitabilitas di segmen on-demand dan peluncuran produk pinjaman digital baru (buy now pay later)."
+          ]
+        },
+        {
+          "id": "q16",
+          "category": "Risk",
+          "query": "What are the macroeconomic risks mentioned by GoTo?",
+          "expected_chunk_ids": ["goto-risk-4"],
+          "expected_citations": [
+            "Kondisi ekonomi makro seperti inflasi yang tinggi dapat menurunkan daya beli masyarakat terhadap layanan e-commerce dan mobilitas."
+          ]
+        },
+        {
+          "id": "q17",
+          "category": "Financial",
+          "query": "How is GoTo planning to use the IPO proceeds?",
+          "expected_chunk_ids": ["goto-fin-4"],
+          "expected_citations": [
+            "Sekitar 30% dari dana IPO akan digunakan untuk pengembangan infrastruktur teknologi, dan sisanya untuk modal kerja."
+          ]
+        },
+        {
+          "id": "q18",
+          "category": "Governance",
+          "query": "Are there any governance red flags?",
+          "expected_chunk_ids": ["goto-gov-4"],
+          "expected_citations": [
+            "Penerapan struktur saham dengan hak suara multipel (Multiple Voting Shares/MVS) memberikan kendali signifikan kepada para pendiri meskipun porsi kepemilikan saham mereka kecil, yang dapat menjadi isu bagi pemegang saham minoritas."
+          ]
+        },
+        {
+          "id": "q19",
+          "category": "Business",
+          "query": "What is the take rate for GoTo's e-commerce segment?",
+          "expected_chunk_ids": ["goto-biz-5"],
+          "expected_citations": [
+            "Take rate segmen e-commerce meningkat menjadi 3.2% pada kuartal terakhir tahun 2021."
+          ]
+        },
+        {
+          "id": "q20",
+          "category": "Valuation",
+          "query": "What is the overall investment recommendation consensus?",
+          "expected_chunk_ids": ["goto-val-4"],
+          "expected_citations": [
+            "Berbagai analis mengisyaratkan rekomendasi HOLD mengingat potensi pertumbuhan yang besar diimbangi oleh rentang waktu profitabilitas yang belum pasti."
+          ]
+        }
+      ]
+    }
+  ]
+}

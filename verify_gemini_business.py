@@ -18,7 +18,7 @@ logger = structlog.stdlib.get_logger(__name__)
 async def setup_rag_mock_data(document_id: str):
     print("[1/3] Setting up mock prospectus in RAG Engine...")
     loader = PDFLoader(use_ocr=True)
-    dummy_pdf_bytes = b"%PDF-1.4\n1 0 obj\n<<>>\nendobj\ntrailer\n<<>>\n%%EOF"
+    dummy_pdf_bytes = b"%PDF-1.4\n1 0ase obj\n<<>>\nendobj\ntrailer\n<<>>\n%%EOF"
     pages = loader.load(dummy_pdf_bytes, document_id)
     
     chunker = HierarchicalChunker()

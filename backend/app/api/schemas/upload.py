@@ -11,6 +11,7 @@ class UploadResponse(BaseModel):
     """Response after a successful document upload."""
 
     document_id: str = Field(..., description="Newly created document UUID.")
+    job_id: str = Field(..., description="The ID of the triggered processing job.")
     filename: str = Field(..., description="Original filename.")
     file_size: int = Field(..., description="File size in bytes.")
     status: str = Field(default="pending", description="Initial processing status.")
