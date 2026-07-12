@@ -1,6 +1,14 @@
 from pydantic import BaseModel
+from typing import List
+
 class EvaluationInput(BaseModel):
-    job_id: str
-    final_report_path: str
+    document_id: str
+    target_agent: str
+
 class EvaluationOutput(BaseModel):
-    score: int
+    groundedness: float
+    faithfulness: float
+    coverage: float
+    missing_evidence: List[str]
+    citation_completeness: float
+    confidence: float

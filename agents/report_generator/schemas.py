@@ -1,6 +1,10 @@
 from pydantic import BaseModel
+from typing import List
+
 class ReportGeneratorInput(BaseModel):
-    job_id: str
     document_id: str
+    job_id: str
+
 class ReportGeneratorOutput(BaseModel):
-    final_report_path: str
+    investment_report_markdown: str
+    citations: List[str]
