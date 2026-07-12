@@ -36,6 +36,11 @@ class Settings(BaseSettings):
     anthropic_api_key: str = ""
     default_llm_provider: str = "openai"
     default_llm_model: str = "gpt-4.1"
+    llm_temperature: float = 0.0
+    llm_top_p: float = 0.9
+    llm_max_output_tokens: int = 8192
+    llm_timeout: int = 120
+    llm_max_retries: int = 1
 
     # Embedding
     embedding_model: str = "BAAI/bge-m3"
@@ -62,6 +67,7 @@ class Settings(BaseSettings):
         "env_file": ".env",
         "env_file_encoding": "utf-8",
         "case_sensitive": False,
+        "extra": "ignore",
     }
 
 

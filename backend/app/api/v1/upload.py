@@ -89,6 +89,7 @@ async def upload_document(
     
     return UploadResponse(
         document_id=str(document.id),
+        job_id=str(job.id),
         filename=document.filename,
         file_size=document.file_size or 0,
         status=job.status.value,
