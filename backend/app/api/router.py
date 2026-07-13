@@ -14,6 +14,7 @@ from backend.app.api.v1 import (
     upload,
     users,
     chat,
+    documents,
 )
 
 api_router = APIRouter()
@@ -30,3 +31,4 @@ api_router.include_router(jobs.router, prefix="/v1", tags=["Jobs"])
 api_router.include_router(evaluation.router, prefix="/v1", tags=["Evaluation"])
 api_router.include_router(companies.router, prefix="/v1", tags=["Companies"])
 api_router.include_router(chat.router, prefix="/v1", tags=["Chat"])
+api_router.include_router(documents.router, prefix="/v1", tags=["Documents"])

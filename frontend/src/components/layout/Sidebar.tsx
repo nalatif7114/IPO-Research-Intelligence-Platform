@@ -20,10 +20,6 @@ const navItems = [
   { label: "Dashboard", href: "/", icon: LayoutDashboard },
   { label: "Upload", href: "/upload", icon: Upload },
   { label: "Analysis", href: "/analysis", icon: BarChart3 },
-  { label: "Reports", href: "/reports", icon: FileText },
-  { label: "Companies", href: "/companies", icon: Building2 },
-  { label: "Evaluation", href: "/evaluation", icon: ShieldCheck },
-  { label: "Settings", href: "/settings", icon: Settings },
 ];
 
 export default function Sidebar() {

@@ -55,6 +55,18 @@ class MinIOStorage(StorageBackend):
             if response:
                 response.close()
                 response.release_conn()
+                
+    async def stream(self, path: str):
+        """Stream data from MinIO without loading into memory."""
+        response = None
+        try:
+            response = self.client.get_object(self.bucket, path)
+            for chunk in response.stream(32 * 1024):
+                yield chunk
+        finally:
+            if response:
+                response.close()
+                response.release_conn()
         
     async def delete(self, path: str) -> None:
         """Delete data from MinIO."""
