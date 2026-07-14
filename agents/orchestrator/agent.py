@@ -109,25 +109,13 @@ class OrchestratorAgent(BaseAgent[OrchestratorInput, OrchestratorOutput]):
         workflow.set_entry_point("agent_document_intake")
         workflow.add_edge("agent_document_intake", "agent_parser_ocr")
         workflow.add_edge("agent_parser_ocr", "agent_chunking_embedding")
-        
-        # Parallel Execution (Group A)
         workflow.add_edge("agent_chunking_embedding", "agent_business_analysis")
-        workflow.add_edge("agent_chunking_embedding", "agent_financial_analysis")
-        workflow.add_edge("agent_chunking_embedding", "agent_risk_assessment_p1")
-        
-        # Group B waits for Group A
-        workflow.add_edge("agent_business_analysis", "agent_valuation")
-        workflow.add_edge("agent_financial_analysis", "agent_valuation")
-        
+        workflow.add_edge("agent_business_analysis", "agent_financial_analysis")
+        workflow.add_edge("agent_financial_analysis", "agent_risk_assessment_p1")
         workflow.add_edge("agent_risk_assessment_p1", "agent_risk_assessment_p2")
-        workflow.add_edge("agent_business_analysis", "agent_risk_assessment_p2")
-        workflow.add_edge("agent_financial_analysis", "agent_risk_assessment_p2")
-
-        # Synchronization for Governance
-        workflow.add_edge("agent_valuation", "agent_governance")
         workflow.add_edge("agent_risk_assessment_p2", "agent_governance")
-
-        workflow.add_edge("agent_governance", "agent_report_generator")
+        workflow.add_edge("agent_governance", "agent_valuation")
+        workflow.add_edge("agent_valuation", "agent_report_generator")
         workflow.add_edge("agent_report_generator", "agent_evaluation")
         workflow.add_edge("agent_evaluation", END)
         

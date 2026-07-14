@@ -1,23 +1,26 @@
 @import "tailwindcss";
 
 :root {
-  --bg-primary: #0a0e1a;
+  --bg-primary: #09090B;
   --bg-secondary: #111827;
-  --bg-card: rgba(17, 24, 39, 0.7);
-  --bg-glass: rgba(17, 24, 39, 0.5);
-  --border-glass: rgba(99, 102, 241, 0.15);
-  --border-subtle: rgba(148, 163, 184, 0.1);
+  --bg-card: #131A2B;
+  --bg-card-hover: #1E293B;
+  --bg-glass: rgba(19, 26, 43, 0.6);
+  --border-glass: rgba(255, 255, 255, 0.06);
+  --border-subtle: rgba(255, 255, 255, 0.04);
   --text-primary: #f1f5f9;
   --text-secondary: #94a3b8;
   --text-muted: #64748b;
-  --accent-blue: #3b82f6;
-  --accent-purple: #8b5cf6;
-  --accent-gradient: linear-gradient(135deg, #3b82f6, #8b5cf6);
-  --accent-gradient-hover: linear-gradient(135deg, #60a5fa, #a78bfa);
-  --success: #22c55e;
-  --warning: #eab308;
-  --error: #ef4444;
-  --info: #3b82f6;
+  --primary: #7C3AED;
+  --accent: #6366F1;
+  --accent-blue: #6366F1; /* Fallback for legacy classes */
+  --accent-purple: #7C3AED;
+  --accent-gradient: linear-gradient(135deg, #6366F1, #7C3AED);
+  --accent-gradient-hover: linear-gradient(135deg, #818cf8, #8b5cf6);
+  --success: #22C55E;
+  --warning: #F59E0B;
+  --error: #EF4444;
+  --info: #6366F1;
 }
 
 * {
@@ -56,11 +59,11 @@ body {
 
 /* Glass card */
 .glass-card {
-  background: var(--bg-glass);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
+  background: var(--bg-card);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
   border: 1px solid var(--border-glass);
-  border-radius: 16px;
+  border-radius: 24px;
 }
 
 .glass-card-sm {

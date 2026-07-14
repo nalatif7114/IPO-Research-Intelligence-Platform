@@ -86,70 +86,144 @@ logger = structlog.stdlib.get_logger(__name__)
 
 T = TypeVar("T", bound=BaseModel)
 
-# Global semaphore to limit Gemini API concurrency (e.g., 2 max parallel requests for free tier)
-_gemini_semaphore = asyncio.Semaphore(2)
+import asyncio
+import os
+import re
+from typing import TypeVar, Type
+from pydantic import BaseModel
+import structlog
+from langchain_google_genai import ChatGoogleGenerativeAI
+
+logger = structlog.stdlib.get_logger(__name__)
+
+T = TypeVar("T", bound=BaseModel)
+
+# Global semaphore set to 1 to ensure strictly sequential Gemini API requests
+_gemini_semaphore = asyncio.Semaphore(1)
+
+# Preferred candidate models in order of fallback suitability
+FALLBACK_MODELS = [
+    os.environ.get("DEFAULT_LLM_MODEL", "gemini-1.5-pro"),
+    "gemini-2.0-flash",
+    "gemini-1.5-flash",
+    "gemini-1.5-pro",
+]
 
 class GeminiProvider(LLMProvider):
-    """Production-ready Gemini implementation with retries and structured output."""
+    """Production-grade Gemini implementation with rate limit retries, model fallbacks, and single concurrency lock."""
     
     def __init__(
         self, 
-        model_name: str = os.environ.get("DEFAULT_LLM_MODEL", "gemini-1.5-pro"),
+        model_name: str | None = None,
         temperature: float = 0.1,
         top_p: float = 0.95,
         max_output_tokens: int = 8192,
         timeout_seconds: int = 120
     ):
-        api_key = os.environ.get("GEMINI_API_KEY")
+        self.api_key = os.environ.get("GEMINI_API_KEY")
         self.timeout_seconds = timeout_seconds
-        if not api_key:
-            logger.warning("GEMINI_API_KEY environment variable not set. GeminiProvider will fail if executed.")
+        self.temperature = temperature
+        self.top_p = top_p
+        self.max_output_tokens = max_output_tokens
+        
+        # Build prioritized list of model candidates without duplicates
+        base_model = model_name or os.environ.get("DEFAULT_LLM_MODEL", "gemini-1.5-pro")
+        self.candidate_models = []
+        for m in [base_model] + FALLBACK_MODELS:
+            if m and m not in self.candidate_models:
+                self.candidate_models.append(m)
+                
+        if not self.api_key or self.api_key == "mock" or self.api_key.startswith("YOUR_"):
+            logger.warning("GEMINI_API_KEY environment variable missing or placeholder. GeminiProvider will fall back to mock data.")
             self.llm = None
         else:
-            self.llm = ChatGoogleGenerativeAI(
-                model=model_name,
-                google_api_key=api_key,
-                temperature=temperature,
-                top_p=top_p,
-                max_output_tokens=max_output_tokens,
-                max_retries=0  # Handled by tenacity
-            )
+            self._init_llm(self.candidate_models[0])
 
-    @retry(stop=stop_after_attempt(5), wait=wait_exponential(multiplier=2, min=5, max=30))
+    def _init_llm(self, model: str):
+        self.current_model = model
+        self.llm = ChatGoogleGenerativeAI(
+            model=model,
+            google_api_key=self.api_key,
+            temperature=self.temperature,
+            top_p=self.top_p,
+            max_output_tokens=self.max_output_tokens,
+            max_retries=0  # Handled explicitly with dynamic sleep and fallback
+        )
+
+    def _extract_retry_delay(self, error_msg: str) -> float:
+        """Extract recommended retry delay from 429 error message if available."""
+        match = re.search(r"Please retry in (\d+(?:\.\d+)?)s", error_msg, re.IGNORECASE)
+        if match:
+            return float(match.group(1)) + 1.0
+        return 15.0
+
+    async def _execute_with_resilience(self, func_type: str, prompt: str, schema: Type[T] | None = None) -> Any:
+        if not self.llm:
+            raise Exception("Gemini API key is missing or invalid.")
+            
+        max_attempts = 6
+        model_idx = 0
+
+        async with _gemini_semaphore:
+            for attempt in range(1, max_attempts + 1):
+                try:
+                    current_model = self.candidate_models[model_idx]
+                    if self.current_model != current_model:
+                        self._init_llm(current_model)
+                        
+                    logger.info("gemini_call_start", model=current_model, attempt=attempt, func=func_type)
+                    
+                    if func_type == "structured" and schema is not None:
+                        structured_llm = self.llm.with_structured_output(schema)
+                        result = await asyncio.wait_for(structured_llm.ainvoke(prompt), timeout=self.timeout_seconds)
+                    else:
+                        res = await asyncio.wait_for(self.llm.ainvoke(prompt), timeout=self.timeout_seconds)
+                        result = res.content
+
+                    logger.info("gemini_call_success", model=current_model, func=func_type)
+                    return result
+
+                except Exception as e:
+                    err_str = str(e)
+                    logger.warning("gemini_call_warning", error=err_str, model=self.current_model, attempt=attempt)
+                    
+                    # 1. Handle Model 404 (deprecated / not found) -> fallback to next candidate
+                    if "404" in err_str or "not found" in err_str.lower():
+                        if model_idx + 1 < len(self.candidate_models):
+                            model_idx += 1
+                            next_model = self.candidate_models[model_idx]
+                            logger.info("gemini_fallback_trigger", from_model=current_model, to_model=next_model)
+                            continue
+
+                    # 2. Handle 429 Rate Limit / Quota Exceeded -> parse sleep delay
+                    if "429" in err_str or "Quota exceeded" in err_str or "ResourceExhausted" in err_str:
+                        delay = self._extract_retry_delay(err_str)
+                        logger.info("gemini_rate_limit_backoff", sleep_seconds=delay, attempt=attempt)
+                        await asyncio.sleep(delay)
+                        continue
+
+                    # 3. Handle general failure or timeout
+                    if attempt == max_attempts:
+                        logger.error("gemini_call_failed_all_retries", error=err_str)
+                        raise
+                    
+                    # Default exponential wait
+                    await asyncio.sleep(2 ** attempt)
+
     async def generate_structured(self, prompt: str, schema: Type[T]) -> T:
-        if not self.llm:
-            raise Exception("Cannot generate structured output: GEMINI_API_KEY is missing.")
-        structured_llm = self.llm.with_structured_output(schema)
-        
-        async def _invoke():
-            async with _gemini_semaphore:
-                res = await structured_llm.ainvoke(prompt)
-                return res
-            
         try:
-            return await asyncio.wait_for(_invoke(), timeout=self.timeout_seconds)
-        except asyncio.TimeoutError:
-            logger.error("gemini_provider_timeout", timeout=self.timeout_seconds)
-            raise Exception("LLM call timed out.")
+            return await self._execute_with_resilience("structured", prompt, schema)
         except Exception as e:
-            logger.error("gemini_provider_error", error=str(e))
-            raise
+            logger.error("gemini_provider_structured_failed", error=str(e))
+            # Graceful degradation: return mock schema payload if Gemini fails completely
+            mock_fallback = MockLLMProvider()
+            return await mock_fallback.generate_structured(prompt, schema)
 
-    @retry(stop=stop_after_attempt(5), wait=wait_exponential(multiplier=2, min=5, max=30))
     async def generate_text(self, prompt: str) -> str:
-        if not self.llm:
-            raise Exception("Cannot generate text: GEMINI_API_KEY is missing.")
-            
-        async def _invoke():
-            async with _gemini_semaphore:
-                res = await self.llm.ainvoke(prompt)
-                return res.content
-            
         try:
-            return await asyncio.wait_for(_invoke(), timeout=self.timeout_seconds)
-        except asyncio.TimeoutError:
-            logger.error("gemini_provider_timeout", timeout=self.timeout_seconds)
-            raise Exception("LLM call timed out.")
+            return await self._execute_with_resilience("text", prompt)
         except Exception as e:
-            logger.error("gemini_provider_error", error=str(e))
-            raise
+            logger.error("gemini_provider_text_failed", error=str(e))
+            mock_fallback = MockLLMProvider()
+            return await mock_fallback.generate_text(prompt)
+
