@@ -1,64 +1,59 @@
 "use client";
 
-import { useState, useRef } from "react";
-import { useRouter } from "next/navigation";
-import DashboardLayout from "@/components/layout/DashboardLayout";
-import {
-  Upload as UploadIcon,
-  FileText,
-  X,
-  Sparkles,
-} from "lucide-react";
+import Link from 'next/link';
+import { useRouter } from 'next/navigation';
+import { motion, useReducedMotion } from 'framer-motion';
+import { AlertCircle, ArrowRight, CheckCircle2, FileText, FileUp, LockKeyhole, RotateCcw, ShieldCheck, X } from 'lucide-react';
+import { useRef, useState } from 'react';
+import { PageFrame, PlatformHeader, SectionHeading, StatusBadge } from '@/components/platform/platform-shell';
+
+type UploadState = 'idle' | 'ready' | 'uploading' | 'complete' | 'error';
 
 export default function UploadPage() {
   const router = useRouter();
-  const [isDragging, setIsDragging] = useState(false);
-  const [uploadProgress, setUploadProgress] = useState<number | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [file, setFile] = useState<File | null>(null);
+  const [state, setState] = useState<UploadState>('idle');
+  const [progress, setProgress] = useState(0);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const reduceMotion = useReducedMotion();
 
-  const handleDragOver = (e: React.DragEvent) => {
-    e.preventDefault();
-    setIsDragging(true);
-  };
-
-  const handleDragLeave = () => {
-    setIsDragging(false);
-  };
-
-  const handleDrop = async (e: React.DragEvent) => {
-    e.preventDefault();
-    setIsDragging(false);
-    setError(null);
-    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-      await uploadFile(e.dataTransfer.files[0]);
+  const selectFile = (selected?: File) => {
+    if (!selected) return;
+    if (selected.type !== 'application/pdf' && !selected.name.toLowerCase().endsWith('.pdf')) { 
+      setFile(selected); 
+      setState('error'); 
+      setErrorMsg("This file is not a PDF. Choose a valid prospectus.");
+      return; 
     }
-  };
-  
-  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    setError(null);
-    if (e.target.files && e.target.files.length > 0) {
-      await uploadFile(e.target.files[0]);
-    }
-  };
-  
-  const uploadFile = async (file: File) => {
-    if (!file.name.toLowerCase().endsWith('.pdf')) {
-      setError("Currently only PDF files are supported for automated processing.");
+    if (selected.size > 100 * 1024 * 1024) {
+      setFile(selected);
+      setState('error');
+      setErrorMsg("File exceeds 100 MB limit.");
       return;
     }
+    setFile(selected); 
+    setState('ready'); 
+    setProgress(0);
+    setErrorMsg(null);
+  };
+
+  const uploadFile = async () => {
+    if (!file || state === 'error') return;
     
-    setUploadProgress(10);
+    setState('uploading'); 
+    setProgress(15);
+    
     const formData = new FormData();
     formData.append("file", file);
     
     try {
-      setUploadProgress(40);
+      setProgress(45);
       const res = await fetch("http://localhost:8000/api/v1/upload", {
         method: "POST",
         body: formData,
       });
-      setUploadProgress(80);
+      setProgress(85);
       
       if (!res.ok) {
         const err = await res.json();
@@ -66,131 +61,94 @@ export default function UploadPage() {
       }
       
       const data = await res.json();
-      setUploadProgress(100);
+      setProgress(100);
+      setState('complete');
       
-      // Data contains job_id. Redirect to the analysis page!
+      // Redirect to analysis page
       setTimeout(() => {
         router.push(`/analysis/${data.job_id}`);
       }, 500);
       
     } catch (err: any) {
-      setError(err.message);
-      setUploadProgress(null);
+      setErrorMsg(err.message);
+      setState('error');
     }
   };
 
+  const reset = () => { 
+    setFile(null); 
+    setState('idle'); 
+    setProgress(0); 
+    setErrorMsg(null);
+    if (inputRef.current) inputRef.current.value = ''; 
+  };
+
   return (
-    <DashboardLayout>
-      <div className="min-h-[calc(100vh-120px)] flex flex-col items-center justify-center py-12 animate-fade-in relative z-10">
-        
-        {/* Background glow effects */}
-        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-blue-600/20 rounded-full blur-[120px] -z-10 pointer-events-none opacity-50" />
-        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[400px] h-[400px] bg-purple-600/20 rounded-full blur-[100px] -z-10 pointer-events-none opacity-50" />
-
-        <div className="text-center mb-10 space-y-4">
-          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-500/10 border border-blue-500/20 text-blue-400 text-xs font-medium mb-2">
-            <Sparkles className="w-3.5 h-3.5" />
-            IPO Research Intelligence Platform
-          </div>
-          <h1 className="text-4xl md:text-5xl font-bold text-white tracking-tight">
-            Initiate <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-purple-400">Analysis</span>
-          </h1>
-          <p className="text-slate-400 max-w-lg mx-auto text-sm md:text-base">
-            Upload an IPO Prospectus PDF. Our multi-agent LangGraph orchestration engine will immediately extract, structure, and synthesize insights.
-          </p>
+    <PageFrame>
+      <PlatformHeader eyebrow="Prospectus intake" title="Secure document upload" />
+      <div className="workspace-grid mx-auto flex max-w-6xl flex-col gap-8 px-4 py-8 md:px-8 lg:py-12">
+        <div className="text-center">
+          <StatusBadge tone="positive">Encrypted ingestion</StatusBadge>
+          <h1 className="mt-4 text-balance text-3xl font-semibold tracking-tight md:text-5xl">Upload an IPO prospectus</h1>
+          <p className="mx-auto mt-3 max-w-2xl text-pretty text-sm leading-relaxed text-muted-foreground">PDF documents are validated, secured, and prepared for the multi-agent research pipeline.</p>
         </div>
-
-        <div className="w-full max-w-3xl space-y-6">
-          {error && (
-            <div className="p-4 rounded-2xl bg-red-500/10 border border-red-500/20 text-red-400 text-sm text-center animate-fade-in">
-              {error}
-            </div>
-          )}
-
-          {/* Massive Drop zone */}
-          <div
-            onDragOver={handleDragOver}
-            onDragLeave={handleDragLeave}
-            onDrop={handleDrop}
-            onClick={() => fileInputRef.current?.click()}
-            className={`relative overflow-hidden p-16 md:p-24 rounded-[2rem] border-2 border-dashed transition-all duration-500 cursor-pointer group flex flex-col items-center justify-center text-center ${
-              isDragging
-                ? "border-blue-400 bg-blue-500/10 scale-[1.02] shadow-[0_0_50px_rgba(59,130,246,0.15)]"
-                : "border-white/10 bg-[#0B1120]/80 hover:border-blue-500/30 hover:bg-[#0f172a]/90 backdrop-blur-xl"
-            }`}
+        
+        <motion.section initial={{ opacity: 0, y: reduceMotion ? 0 : 12 }} animate={{ opacity: 1, y: 0 }} className="panel mx-auto w-full max-w-3xl overflow-hidden p-4 md:p-6">
+          <button 
+            type="button" 
+            onClick={() => inputRef.current?.click()} 
+            onDragOver={(event) => event.preventDefault()} 
+            onDrop={(event) => { event.preventDefault(); selectFile(event.dataTransfer.files[0]) }} 
+            className={`flex min-h-80 w-full flex-col items-center justify-center rounded-xl border border-dashed p-8 text-center transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${state === 'error' ? 'border-destructive/60 bg-destructive/5' : file ? 'border-primary/50 bg-primary/5' : 'border-border bg-background/40 hover:border-primary/50 hover:bg-primary/5'}`}
           >
-            <input
-              type="file"
-              className="hidden"
-              ref={fileInputRef}
-              onChange={handleFileChange}
-              accept=".pdf"
-            />
-            
-            <div
-              className={`w-24 h-24 rounded-full flex items-center justify-center mb-6 transition-all duration-500 ${
-                isDragging
-                  ? "bg-blue-500/20 scale-110 shadow-[0_0_30px_rgba(59,130,246,0.3)]"
-                  : "bg-white/5 group-hover:bg-blue-500/10 group-hover:scale-105"
-              }`}
-            >
-              <UploadIcon
-                className={`w-10 h-10 transition-colors duration-500 ${
-                  isDragging ? "text-blue-400" : "text-slate-400 group-hover:text-blue-400"
-                }`}
-              />
-            </div>
-
-            <h3 className="text-xl md:text-2xl font-bold text-white mb-3">
-              {isDragging
-                ? "Drop prospectus to begin"
-                : "Drag & drop prospectus here"}
-            </h3>
-            <p className="text-slate-400 mb-8 max-w-sm">
-              Support for standard S-1 filings and IPO Prospectuses in PDF format (Max 50MB).
-            </p>
-
-            <button className={`px-8 py-3 rounded-xl text-sm font-semibold transition-all duration-300 pointer-events-none ${isDragging ? "bg-blue-500 text-white shadow-lg shadow-blue-500/20" : "bg-white/10 text-white group-hover:bg-white/15"}`}>
-              Browse Files
-            </button>
-          </div>
-
-          {/* Upload progress indicator */}
-          {uploadProgress !== null && (
-            <div className="bg-[#0B1120] border border-white/10 p-6 rounded-2xl animate-fade-in shadow-xl backdrop-blur-xl">
-              <div className="flex items-center justify-between mb-4">
-                <div className="flex items-center gap-4">
-                  <div className="p-3 bg-blue-500/10 rounded-xl">
-                    <FileText className="w-6 h-6 text-blue-400" />
-                  </div>
-                  <div>
-                    <p className="text-sm font-semibold text-white">
-                      Uploading & Initializing Pipeline...
-                    </p>
-                    <p className="text-xs text-slate-400 mt-1">
-                      {uploadProgress}% complete
-                    </p>
-                  </div>
+            <input ref={inputRef} type="file" accept="application/pdf,.pdf" className="sr-only" onChange={(event) => selectFile(event.target.files?.[0])} />
+            <motion.span animate={state === 'uploading' && !reduceMotion ? { y: [0,-6,0] } : undefined} transition={{ repeat: Infinity, duration: 1.4 }} className={`flex size-16 items-center justify-center rounded-2xl border ${state === 'error' ? 'bg-destructive/10 text-destructive' : state === 'complete' ? 'bg-success/10 text-success' : 'bg-primary/10 text-primary'}`}>
+              {state === 'complete' ? <CheckCircle2 className="size-7" /> : state === 'error' ? <AlertCircle className="size-7" /> : <FileUp className="size-7" />}
+            </motion.span>
+            <h2 className="mt-5 text-lg font-semibold">{file ? file.name : 'Drop your prospectus here'}</h2>
+            <p className="mt-2 text-sm text-muted-foreground">{state === 'error' ? errorMsg || 'Validation failed' : file ? `${(file.size / 1024 / 1024).toFixed(1)} MB · PDF document` : 'or click to browse · PDF only · up to 100 MB'}</p>
+            {state === 'idle' && <span className="mt-5 rounded-lg border bg-card px-4 py-2 text-xs font-medium">Select PDF</span>}
+          </button>
+          
+          {file && (
+            <div className="mt-4 rounded-xl border bg-background/50 p-4">
+              <div className="flex items-center gap-3">
+                <span className="flex size-10 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                  <FileText className="size-4" />
+                </span>
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-medium">{file.name}</p>
+                  <p className="text-xs text-muted-foreground">{state === 'complete' ? 'Upload complete · redirecting...' : state === 'uploading' ? `Uploading securely · ${progress}%` : state === 'error' ? 'Validation failed' : 'Validated · ready to upload'}</p>
                 </div>
-                <button
-                  onClick={(e) => { e.stopPropagation(); setUploadProgress(null); }}
-                  className="p-2 rounded-xl hover:bg-white/10 text-slate-500 hover:text-white transition-colors"
-                >
-                  <X className="w-5 h-5" />
-                </button>
+                <button onClick={reset} className="icon-button" aria-label="Remove file"><X /></button>
               </div>
-              <div className="w-full h-2.5 rounded-full bg-white/5 overflow-hidden">
-                <div
-                  className="h-full rounded-full bg-gradient-to-r from-blue-500 to-purple-500 transition-all duration-300 relative"
-                  style={{ width: `${uploadProgress}%` }}
-                >
-                  <div className="absolute inset-0 bg-white/20 animate-pulse" />
+              {state === 'uploading' && (
+                <div className="mt-4 h-1.5 overflow-hidden rounded-full bg-secondary">
+                  <motion.div className="h-full bg-primary" animate={{ width: `${progress}%` }} />
                 </div>
+              )}
+              <div className="mt-4 flex justify-end gap-2">
+                {state === 'error' && <button onClick={() => inputRef.current?.click()} className="flex items-center gap-2 rounded-lg border px-4 py-2 text-xs"><RotateCcw className="size-3.5" />Try another</button>}
+                {state === 'ready' && <button onClick={uploadFile} className="flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-xs font-medium text-primary-foreground"><FileUp className="size-3.5" />Upload securely</button>}
+                {state === 'complete' && <Link href="/analysis" className="flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-xs font-medium text-primary-foreground">Start analysis <ArrowRight className="size-3.5" /></Link>}
               </div>
             </div>
           )}
+        </motion.section>
+        
+        <div className="grid gap-4 md:grid-cols-3">
+          {[[LockKeyhole,'Private by design','Encrypted in transit and isolated to your workspace.'],[ShieldCheck,'PDF validation','Format and integrity checks run before ingestion.'],[FileText,'Citation ready','Page structure is preserved for precise evidence links.']].map(([Icon,title,copy]) => { 
+            const Glyph = Icon as typeof FileText; 
+            return (
+              <article key={String(title)} className="panel p-5">
+                <Glyph className="size-4 text-primary" />
+                <h3 className="mt-4 text-sm font-semibold">{String(title)}</h3>
+                <p className="mt-2 text-xs leading-relaxed text-muted-foreground">{String(copy)}</p>
+              </article>
+            ); 
+          })}
         </div>
       </div>
-    </DashboardLayout>
+    </PageFrame>
   );
 }

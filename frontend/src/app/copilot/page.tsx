@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { Loader2 } from "lucide-react";
 import { PageFrame, PlatformHeader } from "@/components/platform/platform-shell";
 
-export default function AnalysisWrapperPage() {
+export default function CopilotWrapperPage() {
   const router = useRouter();
   const [error, setError] = useState<boolean>(false);
 
@@ -18,7 +18,7 @@ export default function AnalysisWrapperPage() {
       .then((data) => {
         if (data.items && data.items.length > 0) {
           const id = data.items[0].id;
-          router.replace(`/analysis/${id}`);
+          router.replace(`/analysis/${id}?tab=copilot`);
         } else {
           setError(true);
         }
@@ -28,7 +28,7 @@ export default function AnalysisWrapperPage() {
 
   return (
     <PageFrame>
-      <PlatformHeader eyebrow="System routing" title="Locating analysis workspace" />
+      <PlatformHeader eyebrow="System routing" title="Locating investor copilot" />
       <div className="flex h-[calc(100vh-100px)] items-center justify-center">
         {error ? (
           <div className="text-center">
@@ -39,7 +39,7 @@ export default function AnalysisWrapperPage() {
         ) : (
           <div className="flex flex-col items-center gap-4">
             <Loader2 className="size-8 animate-spin text-primary" />
-            <p className="text-sm text-muted-foreground">Redirecting to latest workspace...</p>
+            <p className="text-sm text-muted-foreground">Redirecting to latest copilot session...</p>
           </div>
         )}
       </div>
