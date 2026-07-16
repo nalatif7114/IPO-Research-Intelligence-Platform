@@ -49,6 +49,7 @@ class OrchestratorAgent(BaseAgent[OrchestratorInput, OrchestratorOutput]):
         import uuid
         
         async with async_session_factory() as session:
+            error_message = result.get("error") if status == "failed" and result else None
             stmt = select(JobStep).where(JobStep.job_id == uuid.UUID(job_id), JobStep.step_name == step_name)
             step = (await session.execute(stmt)).scalar_one_or_none()
             
@@ -60,7 +61,8 @@ class OrchestratorAgent(BaseAgent[OrchestratorInput, OrchestratorOutput]):
                     status=JobStatus(status),
                     started_at=datetime.now(timezone.utc) if status == "running" else None,
                     progress=50.0 if status == "running" else (100.0 if status == "completed" else 0.0),
-                    result=result
+                    result=result,
+                    error_message=error_message,
                 )
                 session.add(step)
             else:
@@ -70,12 +72,21 @@ class OrchestratorAgent(BaseAgent[OrchestratorInput, OrchestratorOutput]):
                     step.progress = 100.0
                 if result:
                     step.result = result
+                if status == "failed":
+                    step.error_message = error_message
             
             if status == "completed":
                 stmt_job = select(Job).where(Job.id == uuid.UUID(job_id))
                 job = (await session.execute(stmt_job)).scalar_one_or_none()
                 if job:
                     job.progress = min(99.0, job.progress + 9.0)
+
+            if status == "failed":
+                stmt_job = select(Job).where(Job.id == uuid.UUID(job_id))
+                job = (await session.execute(stmt_job)).scalar_one_or_none()
+                if job:
+                    job.status = JobStatus.FAILED
+                    job.error_message = error_message
             
             await session.commit()
 
@@ -101,7 +112,6 @@ class OrchestratorAgent(BaseAgent[OrchestratorInput, OrchestratorOutput]):
         workflow.add_node("agent_financial_analysis", self._wrap_node("Financial Analysis", 5, self._node_financial_analysis))
         workflow.add_node("agent_risk_assessment_p1", self._wrap_node("Risk Assessment Phase 1", 6, self._node_risk_assessment_p1))
         workflow.add_node("agent_valuation", self._wrap_node("Valuation Modeling", 7, self._node_valuation))
-        workflow.add_node("agent_risk_assessment_p2", self._wrap_node("Risk Assessment Phase 2", 8, self._node_risk_assessment_p2))
         workflow.add_node("agent_governance", self._wrap_node("Governance Analysis", 9, self._node_governance))
         workflow.add_node("agent_report_generator", self._wrap_node("Report Synthesis", 10, self._node_report_generator))
         workflow.add_node("agent_evaluation", self._wrap_node("Quality Check", 11, self._node_evaluation))
@@ -112,8 +122,7 @@ class OrchestratorAgent(BaseAgent[OrchestratorInput, OrchestratorOutput]):
         workflow.add_edge("agent_chunking_embedding", "agent_business_analysis")
         workflow.add_edge("agent_business_analysis", "agent_financial_analysis")
         workflow.add_edge("agent_financial_analysis", "agent_risk_assessment_p1")
-        workflow.add_edge("agent_risk_assessment_p1", "agent_risk_assessment_p2")
-        workflow.add_edge("agent_risk_assessment_p2", "agent_governance")
+        workflow.add_edge("agent_risk_assessment_p1", "agent_governance")
         workflow.add_edge("agent_governance", "agent_valuation")
         workflow.add_edge("agent_valuation", "agent_report_generator")
         workflow.add_edge("agent_report_generator", "agent_evaluation")
@@ -165,29 +174,23 @@ class OrchestratorAgent(BaseAgent[OrchestratorInput, OrchestratorOutput]):
         state["valuation"] = res.model_dump()
         return state
 
-    async def _node_risk_assessment_p2(self, state: ImmutableGraphState) -> ImmutableGraphState:
-        agent = RiskAssessmentAgent()
-        res = await agent.run(RiskAssessmentInput(document_id=state["document_id"], phase=2))
-        state["risk_assessment_final"] = res.model_dump()
-        return state
-
     async def _node_governance(self, state: ImmutableGraphState) -> ImmutableGraphState:
         agent = GovernanceAgent()
         res = await agent.run(GovernanceInput(document_id=state["document_id"]))
-        state["governance_approved"] = res.approved
-        state["governance_report"] = res.report
+        state["governance_analysis"] = res.model_dump()
         return state
 
     async def _node_report_generator(self, state: ImmutableGraphState) -> ImmutableGraphState:
         agent = ReportGeneratorAgent()
         res = await agent.run(ReportGeneratorInput(job_id=state["job_id"], document_id=state["document_id"]))
-        state["final_report_path"] = res.final_report_path
+        state["investment_report_markdown"] = res.investment_report_markdown
+        state["report_citations"] = res.citations
         return state
 
     async def _node_evaluation(self, state: ImmutableGraphState) -> ImmutableGraphState:
         agent = EvaluationAgent()
-        res = await agent.run(EvaluationInput(job_id=state["job_id"], final_report_path=state.get("final_report_path", "")))
-        state["evaluation_metrics"] = {"score": res.score}
+        res = await agent.run(EvaluationInput(document_id=state["document_id"], target_agent="report_generator"))
+        state["evaluation_metrics"] = res.model_dump()
         return state
 
     async def execute(self, input_data: OrchestratorInput) -> OrchestratorOutput:

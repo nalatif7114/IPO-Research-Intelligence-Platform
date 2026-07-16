@@ -5,20 +5,17 @@ from __future__ import annotations
 import json
 import uuid
 import structlog
-import os
 from pydantic import BaseModel
 from fastapi import APIRouter, Depends, HTTPException
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from backend.app.config import get_settings
 from backend.app.dependencies import get_db_session
 from backend.app.models.job import Job
 from backend.app.models.document import Document
-from agents.agent_common.llm import MockLLMProvider
 from agents.agent_common.provider_factory import get_llm_provider
-from rag.retriever import HybridRetriever, MockReRanker
+from rag.retriever import HybridRetriever
 from rag.context_builder import TokenBudgetContextBuilder
 from vector_store.qdrant_client import QdrantVectorStore
 from embeddings.provider import MockEmbeddingProvider
@@ -36,8 +33,6 @@ class ChatResponse(BaseModel):
 
 @router.post("/message", response_model=ChatResponse)
 async def chat_message(request: ChatRequest, session: AsyncSession = Depends(get_db_session)):
-    settings = get_settings()
-    
     # Check if document exists
     doc = (await session.execute(select(Document).where(Document.id == uuid.UUID(request.document_id)))).scalar_one_or_none()
     if not doc:
@@ -62,7 +57,6 @@ async def chat_message(request: ChatRequest, session: AsyncSession = Depends(get
         vector_store=vector_store,
         embedding_provider=embedding_provider,
         collection_name="global_prospectus_collection",
-        reranker=MockReRanker()
     )
     context_builder = TokenBudgetContextBuilder()
     
@@ -71,6 +65,11 @@ async def chat_message(request: ChatRequest, session: AsyncSession = Depends(get
         top_k=5,
         filters={"document_id": request.document_id}
     )
+    if not results:
+        return ChatResponse(
+            response="I don't have enough evidence to answer that.",
+            citations=[],
+        )
     
     context_window = context_builder.build_context(results, token_budget=3000)
     
@@ -92,18 +91,14 @@ Instructions:
 3. Cite your sources implicitly or explicitly where possible.
 """
 
-    api_key = os.environ.get("GEMINI_API_KEY", "")
-    if not api_key or api_key == "mock" or api_key.startswith("YOUR_"):
-        llm_provider = MockLLMProvider()
-    else:
-        llm_provider = get_llm_provider()
+    llm_provider = get_llm_provider()
     
     try:
         class ChatStruct(BaseModel):
             response: str
             citations: list[str]
             
-        output = await llm_provider.generate_structured(prompt, ChatStruct)
+        output = await llm_provider.structured_output(prompt, ChatStruct)
         return ChatResponse(response=output.response, citations=output.citations)
     except Exception as e:
         logger.error("chat_failed", error=str(e))

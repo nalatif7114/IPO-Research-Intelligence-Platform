@@ -1,6 +1,5 @@
 from __future__ import annotations
 import abc
-import random
 from pydantic import BaseModel, Field
 from typing import Optional
 
@@ -35,7 +34,7 @@ class BaseRetriever(abc.ABC):
         pass
 
 class HybridRetriever(BaseRetriever):
-    """Hybrid Retriever combining Dense search and a Mock BM25 search."""
+    """Dense retriever with an optional production reranking stage."""
     
     def __init__(
         self, 
@@ -47,7 +46,9 @@ class HybridRetriever(BaseRetriever):
         self.vector_store = vector_store
         self.embedding_provider = embedding_provider
         self.collection_name = collection_name
-        self.reranker = reranker or MockReRanker()
+        # Production callers must opt in to a concrete reranker.  The mock is
+        # retained for tests and verification scripts only.
+        self.reranker = reranker
 
     async def retrieve(self, query: str, top_k: int, filters: Optional[dict] = None) -> list[RetrievalResult]:
         # 1. Dense Search
@@ -55,11 +56,11 @@ class HybridRetriever(BaseRetriever):
         dense_results_raw = await self.vector_store.search(
             collection=self.collection_name,
             query_vector=query_vec,
-            top_k=top_k * 2,  # Fetch more for reranking
+            top_k=top_k * 2 if self.reranker else top_k,
             filters=filters
         )
         
-        # 2. Mock BM25 Search Result Fusion
+        # 2. Deduplicate dense-search results by chunk ID.
         # (In production, this would query a sparse index like elasticsearch or qdrant sparse vectors)
         results_map = {}
         for r in dense_results_raw:
@@ -73,7 +74,7 @@ class HybridRetriever(BaseRetriever):
             
         merged_results = list(results_map.values())
         
-        # 3. Cross-Encoder Re-ranking
-        reranked = self.reranker.rerank(query, merged_results)
+        # 3. Apply a real reranker only when one has been supplied.
+        reranked = self.reranker.rerank(query, merged_results) if self.reranker else merged_results
         
         return reranked[:top_k]

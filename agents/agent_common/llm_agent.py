@@ -1,10 +1,11 @@
 from __future__ import annotations
 import abc
+import time
 from typing import TypeVar, Type
 
 from agents.agent_common.base_agent import BaseAgent, AgentConfig
-from agents.agent_common.llm import LLMProvider, MockLLMProvider
-from rag.retriever import HybridRetriever, BaseRetriever, MockReRanker
+from agents.agent_common.provider_factory import get_llm_provider
+from rag.retriever import HybridRetriever, BaseRetriever
 from rag.context_builder import ContextBuilder, TokenBudgetContextBuilder
 from rag.citation_manager import CitationManager, RAGCitationManager
 from vector_store.qdrant_client import QdrantVectorStore
@@ -29,23 +30,30 @@ class ReasoningAgent(BaseAgent[InputT, OutputT], abc.ABC):
             vector_store=self.vector_store,
             embedding_provider=self.embedding_provider,
             collection_name="global_prospectus_collection", # Assuming unified index
-            reranker=MockReRanker()
         )
         self.context_builder = TokenBudgetContextBuilder()
         self.citation_manager = RAGCitationManager()
-        self.llm_provider = MockLLMProvider()
+        # Production reasoning must always use the configured provider.  Tests
+        # that require deterministic output should inject MockLLMProvider.
+        self.llm_provider = get_llm_provider()
         
     async def execute_reasoning(self, query: str, document_id: str) -> OutputT:
         """Executes the standard Phase 4 reasoning pipeline."""
+
+        if self.llm_provider.provider_name == "MockLLMProvider":
+            raise RuntimeError("MockLLMProvider is not permitted in production reasoning.")
         
+        execution_started = time.perf_counter()
         self.logger.info("reasoning_started", query=query)
         
         # 1. RAG Retrieval
+        retrieval_started = time.perf_counter()
         results = await self.retriever.retrieve(
             query=query, 
             top_k=5, 
             filters={"document_id": document_id} if document_id else None
         )
+        retrieval_latency_seconds = time.perf_counter() - retrieval_started
         
         # 2. Build Context
         context_window = self.context_builder.build_context(results, token_budget=2000)
@@ -55,11 +63,25 @@ class ReasoningAgent(BaseAgent[InputT, OutputT], abc.ABC):
         
         # 4. LLM Generation
         prompt = f"Context:\n{context_window.context_text}\n\nQuery:\n{query}\n\nProvide the structured output."
-        structured_output = await self.llm_provider.generate_structured(prompt, self.output_schema)
+        # This is an observability-only estimate. Ollama's response metadata,
+        # logged by OllamaProvider, remains the authoritative token count.
+        self.logger.info(
+            "reasoning_performance",
+            retrieved_chunk_count=len(results),
+            retrieval_latency_seconds=round(retrieval_latency_seconds, 6),
+            context_characters=len(context_window.context_text),
+            context_token_estimate=len(context_window.context_text) // 4,
+            prompt_characters=len(prompt),
+            prompt_token_estimate=len(prompt) // 4,
+        )
+        structured_output = await self.llm_provider.structured_output(prompt, self.output_schema)
         
         # We attach citations to the final output if the schema supports it.
         if hasattr(structured_output, "citations"):
             structured_output.citations = [c.statement for c in citations]
             
-        self.logger.info("reasoning_completed")
+        self.logger.info(
+            "reasoning_completed",
+            execution_time_seconds=round(time.perf_counter() - execution_started, 6),
+        )
         return structured_output

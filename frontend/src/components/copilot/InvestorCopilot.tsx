@@ -2,6 +2,7 @@
 
 import { BookOpen, Bot, ChevronLeft, ChevronRight, FileSearch, Maximize2, Minus, Plus, Send, Sparkles, User, Loader2 } from 'lucide-react'
 import { useState, useRef, useEffect } from 'react'
+import apiClient, { API_BASE_URL } from '@/lib/api'
 
 type Message = { id: string; role: 'user' | 'assistant'; text: string; citations?: string[] }
 
@@ -16,6 +17,7 @@ export default function InvestorCopilot({ documentId }: { documentId: string }) 
   const [zoom, setZoom] = useState(100)
   const [mobileView, setMobileView] = useState<'chat' | 'document'>('chat')
   const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
   const scrollToBottom = () => messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -29,15 +31,10 @@ export default function InvestorCopilot({ documentId }: { documentId: string }) 
     setMessages((current) => [...current, userMessage])
     setInput('')
     setLoading(true)
+    setError(null)
 
     try {
-      const res = await fetch("http://localhost:8000/api/v1/chat/message", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ document_id: documentId, query: value }),
-      })
-      if (!res.ok) throw new Error("Failed to get response")
-      const data = await res.json()
+      const { data } = await apiClient.post('/chat/message', { document_id: documentId, query: value })
       
       const assistantMessage: Message = {
         id: (Date.now() + 1).toString(),
@@ -47,6 +44,7 @@ export default function InvestorCopilot({ documentId }: { documentId: string }) 
       }
       setMessages((prev) => [...prev, assistantMessage])
     } catch (error) {
+      setError(error instanceof Error ? error.message : 'Unable to query the prospectus data.')
       setMessages((prev) => [...prev, { id: (Date.now() + 1).toString(), role: 'assistant', text: 'Sorry, I encountered an issue querying the prospectus data.' }])
     } finally {
       setLoading(false)
@@ -140,6 +138,7 @@ export default function InvestorCopilot({ documentId }: { documentId: string }) 
                 <div className="flex gap-1.5 pt-1.5"><div className="w-1.5 h-1.5 rounded-full bg-primary animate-bounce" style={{ animationDelay: "0ms" }} /><div className="w-1.5 h-1.5 rounded-full bg-primary animate-bounce" style={{ animationDelay: "150ms" }} /><div className="w-1.5 h-1.5 rounded-full bg-primary animate-bounce" style={{ animationDelay: "300ms" }} /></div>
               </div>
             )}
+            {error && <p role="alert" className="text-xs text-destructive">{error}</p>}
             <div ref={messagesEndRef} />
           </div>
           
@@ -175,7 +174,7 @@ export default function InvestorCopilot({ documentId }: { documentId: string }) 
           <div className="flex-1 relative bg-[#525659] overflow-hidden flex items-center justify-center">
             <iframe
               key={`${documentId}-${page}`}
-              src={`http://localhost:8000/api/v1/documents/${documentId}/download#page=${page}&toolbar=0&navpanes=0&scrollbar=1&view=FitH&zoom=${zoom}`}
+              src={`${API_BASE_URL}/documents/${encodeURIComponent(documentId)}/download#page=${page}&toolbar=0&navpanes=0&scrollbar=1&view=FitH&zoom=${zoom}`}
               className="w-full h-full border-none"
               style={{ backgroundColor: '#525659' }}
               title="PDF Viewer"

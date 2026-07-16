@@ -3,7 +3,7 @@ import uuid
 import structlog
 from typing import Optional
 from qdrant_client import AsyncQdrantClient
-from qdrant_client.models import PointStruct, VectorParams, Distance
+from qdrant_client.models import Distance, FieldCondition, Filter, MatchValue, PointStruct, VectorParams
 
 from vector_store.base import VectorStore
 
@@ -43,13 +43,20 @@ class QdrantVectorStore(VectorStore):
         
     async def search(self, collection: str, query_vector: list[float], top_k: int, filters: Optional[dict] = None) -> list[dict]:
         await self._ensure_collection(collection)
-        # Note: simplistic filter mapping, assuming filters are exact match
-        # Real implementation would map `filters` to Qdrant Filter models.
+        query_filter = None
+        if filters:
+            query_filter = Filter(
+                must=[
+                    FieldCondition(key=key, match=MatchValue(value=value))
+                    for key, value in filters.items()
+                    if value is not None
+                ]
+            )
         results = await self.client.search(
             collection_name=collection,
             query_vector=query_vector,
             limit=top_k,
-            # query_filter=... # Skipping complex filter parsing for MVP
+            query_filter=query_filter,
         )
         return [{"id": r.id, "score": r.score, "payload": r.payload} for r in results]
         

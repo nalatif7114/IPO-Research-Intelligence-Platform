@@ -6,6 +6,7 @@ import { motion, useReducedMotion } from 'framer-motion';
 import { AlertCircle, ArrowRight, CheckCircle2, FileText, FileUp, LockKeyhole, RotateCcw, ShieldCheck, X } from 'lucide-react';
 import { useRef, useState } from 'react';
 import { PageFrame, PlatformHeader, SectionHeading, StatusBadge } from '@/components/platform/platform-shell';
+import apiClient from '@/lib/api';
 
 type UploadState = 'idle' | 'ready' | 'uploading' | 'complete' | 'error';
 
@@ -49,18 +50,12 @@ export default function UploadPage() {
     
     try {
       setProgress(45);
-      const res = await fetch("http://localhost:8000/api/v1/upload", {
-        method: "POST",
-        body: formData,
+      const res = await apiClient.post("/upload", formData, {
+        headers: { "Content-Type": "multipart/form-data" },
       });
       setProgress(85);
-      
-      if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.detail || "Upload failed");
-      }
-      
-      const data = await res.json();
+
+      const data = res.data;
       setProgress(100);
       setState('complete');
       
