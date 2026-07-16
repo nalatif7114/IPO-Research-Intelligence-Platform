@@ -1,5 +1,6 @@
 import os
 import json
+import time
 from agents.agent_common.llm_agent import ReasoningAgent
 from agents.agent_common.base_agent import AgentConfig
 from agents.valuation.schemas import ValuationInput, ValuationOutput, ValuationMetric
@@ -72,11 +73,14 @@ class ValuationAgent(ReasoningAgent[ValuationInput, ValuationOutput]):
         rag_query = "valuation models pricing IPO cash flow discounts growth competitive thesis recommendation margin of safety"
         
         # 1. RAG Retrieval
+        execution_started = time.perf_counter()
+        retrieval_started = time.perf_counter()
         results = await self.retriever.retrieve(
             query=rag_query, 
             top_k=5, 
             filters={"document_id": input_data.document_id} if input_data.document_id else None
         )
+        retrieval_latency_seconds = time.perf_counter() - retrieval_started
         
         # 2. Build Context
         context_window = self.context_builder.build_context(results, token_budget=3000)
@@ -102,32 +106,36 @@ Governance Analysis:
 
 Analyze the above data and provide the final structured valuation output.
 """
+        self.logger.info(
+            "reasoning_performance",
+            retrieved_chunk_count=len(results),
+            retrieval_latency_seconds=round(retrieval_latency_seconds, 6),
+            context_characters=len(context_window.context_text),
+            context_token_estimate=len(context_window.context_text) // 4,
+            prompt_characters=len(composite_prompt),
+            prompt_token_estimate=len(composite_prompt) // 4,
+        )
 
-        for attempt in range(self.max_retries + 1):
-            try:
-                self.logger.info(
-                    "valuation_attempt", 
-                    attempt=attempt, 
-                    document_id=input_data.document_id,
-                    provider=self.llm_provider.provider_name,
-                    model=self.llm_provider.model_name
-                )
-                
-                output = await self.llm_provider.generate_structured(composite_prompt, self.output_schema)
-                
-                if self._validate_citations(output):
-                    return output
-                    
-                self.logger.warning("missing_citations_in_valuation", attempt=attempt)
-                if attempt == self.max_retries:
-                    return self._fallback_missing_citations(output)
-                    
-            except Exception as e:
-                self.logger.error("valuation_execution_error", attempt=attempt, error=str(e))
-                if attempt == self.max_retries:
-                    raise
-                    
-        raise Exception("Valuation analysis failed after retries.")
+        self.logger.info(
+            "valuation_attempt",
+            attempt=0,
+            document_id=input_data.document_id,
+            provider=self.llm_provider.provider_name,
+            model=self.llm_provider.model_name,
+        )
+        # OllamaProvider owns transport retries.  A complete generation that
+        # merely lacks citations is handled below instead of re-running the
+        # same expensive prompt.
+        output = await self.llm_provider.structured_output(composite_prompt, self.output_schema)
+        if not self._validate_citations(output):
+            self.logger.warning("missing_citations_in_valuation", attempt=0)
+            output = self._fallback_missing_citations(output)
+
+        self.logger.info(
+            "reasoning_completed",
+            execution_time_seconds=round(time.perf_counter() - execution_started, 6),
+        )
+        return output
         
     async def handle_error(self, error: Exception) -> None:
         self.logger.error("valuation_failed", error=str(error))

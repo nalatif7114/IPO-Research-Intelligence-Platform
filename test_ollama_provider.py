@@ -7,9 +7,9 @@ async def main():
     provider = get_llm_provider()
     
     query = "Provide a comprehensive business analysis of GoTo based on the prospectus."
-    print("Calling generate_structured...")
+    print("Calling structured_output...")
     try:
-        res = await provider.generate_structured(query, BusinessAnalysisOutput)
+        res = await provider.structured_output(query, BusinessAnalysisOutput)
         print("Success:", res)
     except Exception as e:
         print("Exception:", e)

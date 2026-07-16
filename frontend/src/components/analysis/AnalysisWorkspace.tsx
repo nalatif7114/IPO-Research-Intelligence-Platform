@@ -23,8 +23,9 @@ import {
   X,
   Loader2,
 } from 'lucide-react'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useLayoutEffect, useRef } from 'react'
 import { ProductNav } from '@/components/platform/platform-shell'
+import { currentModelLabel } from '@/lib/model-label'
 
 type StageState = 'complete' | 'running' | 'queued' | 'failed'
 type View = 'Thinking' | 'Findings' | 'Logs' | 'Reasoning' | 'Citations' | 'Progress'
@@ -78,6 +79,8 @@ export function AnalysisWorkspace({ job, steps, elapsedTime }: AnalysisWorkspace
   const [leftOpen, setLeftOpen] = useState(true)
   const [rightOpen, setRightOpen] = useState(true)
   const [copied, setCopied] = useState(false)
+  const workspaceScrollRef = useRef<HTMLDivElement>(null)
+  const workspaceScrollTopRef = useRef(0)
   const reduceMotion = useReducedMotion()
 
   // Find the currently running stage to auto-select it if user hasn't manually selected
@@ -87,6 +90,14 @@ export function AnalysisWorkspace({ job, steps, elapsedTime }: AnalysisWorkspace
       setSelectedStage(runningIndex)
     }
   }, [steps])
+
+  // Polling updates data only. Restore the internal workspace scroll offset so
+  // an updated status never moves the reader back to the top.
+  useLayoutEffect(() => {
+    if (workspaceScrollRef.current) {
+      workspaceScrollRef.current.scrollTop = workspaceScrollTopRef.current
+    }
+  }, [job?.progress, steps])
 
   const copyJobId = async () => {
     if (!job) return
@@ -105,6 +116,13 @@ export function AnalysisWorkspace({ job, steps, elapsedTime }: AnalysisWorkspace
   const currentStep = steps[selectedStage] || null;
   const runningStep = steps.find(s => s.status === 'running') || currentStep;
   const completedCount = steps.filter(s => s.status === 'completed').length;
+  const uploadedProspectusStatus = steps.some(s => s.status === 'failed')
+    ? 'Failed'
+    : runningStep
+      ? `Processing · ${runningStep.step_name}`
+      : job?.status === 'completed'
+        ? 'Processed'
+        : job?.status || 'Pending';
 
   return (
     <div className="flex flex-col flex-1 h-[calc(100vh-64px)] bg-background text-foreground overflow-hidden">
@@ -193,7 +211,7 @@ export function AnalysisWorkspace({ job, steps, elapsedTime }: AnalysisWorkspace
           {!leftOpen && <button className="absolute top-3 left-3 z-10 flex size-7 items-center justify-center rounded-md border bg-card text-muted-foreground hover:bg-accent hover:text-foreground shadow-sm" onClick={() => setLeftOpen(true)} aria-label="Open pipeline"><ChevronRight className="size-4" /></button>}
           {!rightOpen && <button className="absolute top-3 right-3 z-10 flex size-7 items-center justify-center rounded-md border bg-card text-muted-foreground hover:bg-accent hover:text-foreground shadow-sm" onClick={() => setRightOpen(true)} aria-label="Open job details"><ChevronLeft className="size-4" /></button>}
 
-          <div className="workspace-grid flex-1 overflow-y-auto p-4 md:p-6 xl:p-8">
+          <div ref={workspaceScrollRef} onScroll={(event) => { workspaceScrollTopRef.current = event.currentTarget.scrollTop }} className="workspace-grid flex-1 overflow-y-auto p-4 md:p-6 xl:p-8">
             <div className="mx-auto flex max-w-5xl flex-col gap-6">
               <div className="flex flex-col gap-5 border-b pb-6 sm:flex-row sm:items-start sm:justify-between">
                 <div className="flex items-start gap-4">
@@ -256,8 +274,10 @@ export function AnalysisWorkspace({ job, steps, elapsedTime }: AnalysisWorkspace
 
                   {view === 'Logs' && (
                     <div className="panel p-2 font-mono text-[11px] min-h-[200px] flex items-center justify-center">
-                      <div className="flex items-center gap-2 text-primary animate-pulse">
-                        <Loader2 className="size-4 animate-spin" /> Streaming logs...
+                      <div className="max-w-sm px-4 text-center text-muted-foreground">
+                        <TerminalSquare className="mx-auto mb-3 size-4 text-primary" />
+                        <p className="text-xs font-medium text-foreground">Live agent logs are unavailable</p>
+                        <p className="mt-1 text-[11px] leading-relaxed">This deployment does not expose a job-log stream. Job stage status and failures remain available in the pipeline view.</p>
                       </div>
                     </div>
                   )}
@@ -283,7 +303,7 @@ export function AnalysisWorkspace({ job, steps, elapsedTime }: AnalysisWorkspace
           </div>
 
           <footer className="flex h-9 shrink-0 items-center justify-between border-t bg-card/60 px-4 font-mono text-[9px] uppercase tracking-wider text-muted-foreground">
-            <div className="flex items-center gap-4"><span>Model: Gemini 1.5 Pro</span><span className="hidden sm:inline">Context: Dynamic</span></div>
+            <div className="flex items-center gap-4"><span>Model: {currentModelLabel}</span><span className="hidden sm:inline">Context: Dynamic</span></div>
             <div className="flex items-center gap-2"><ShieldCheck aria-hidden="true" className="size-3" /><span>Evidence grounded</span></div>
           </footer>
         </section>
@@ -308,7 +328,7 @@ export function AnalysisWorkspace({ job, steps, elapsedTime }: AnalysisWorkspace
                     <p className="font-mono text-[10px] break-all">{job?.id}</p>
                   </section>
                   <section className="panel p-3">
-                    <div className="flex items-start gap-3"><FileText aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-primary" /><div className="min-w-0"><p className="truncate text-xs font-medium">Uploaded Prospectus</p><p className="mt-1 font-mono text-[9px] text-muted-foreground">{job?.status}</p></div></div>
+                    <div className="flex items-start gap-3"><FileText aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-primary" /><div className="min-w-0"><p className="truncate text-xs font-medium">Uploaded Prospectus</p><p className="mt-1 font-mono text-[9px] text-muted-foreground">{uploadedProspectusStatus}</p></div></div>
                   </section>
                   <section>
                     <p className="eyebrow">Overall completion</p>

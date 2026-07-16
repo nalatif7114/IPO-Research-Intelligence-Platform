@@ -77,8 +77,14 @@ class FinancialAnalysisAgent(ReasoningAgent[FinancialAnalysisInput, FinancialAna
                 if attempt == self.max_retries:
                     return self._fallback_missing_citations(output)
                     
-            except Exception as e:
-                self.logger.error("financial_analysis_execution_error", attempt=attempt, error=str(e))
+            except Exception:
+                self.logger.exception(
+                    "financial_analysis_execution_error",
+                    attempt=attempt,
+                    document_id=input_data.document_id,
+                    provider=self.llm_provider.provider_name,
+                    model=self.llm_provider.model_name,
+                )
                 if attempt == self.max_retries:
                     raise
                     

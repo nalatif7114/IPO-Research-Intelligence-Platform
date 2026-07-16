@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useState, useEffect } from 'react';
 import { Activity, ArrowRight, Bot, CheckCircle2, Clock3, FileSearch, FileText, FileUp, ShieldCheck, Sparkles, Loader2 } from 'lucide-react';
 import { PageFrame, PlatformHeader, SearchBox, SectionHeading, StatusBadge } from '@/components/platform/platform-shell';
+import apiClient from '@/lib/api';
 
 interface AnalysisJob {
   id: string;
@@ -23,13 +24,8 @@ export default function DocumentFirstHomePage() {
   useEffect(() => {
     const fetchRecentJobs = async () => {
       try {
-        const res = await fetch("http://localhost:8000/api/v1/jobs?page_size=4");
-        if (res.ok) {
-          const data = await res.json();
-          setRecentJobs(data.items || []);
-        } else {
-          setError("Unable to load recent analyses. Please try again later.");
-        }
+        const { data } = await apiClient.get("/jobs?page_size=4");
+        setRecentJobs(data.items || []);
       } catch (err) {
         console.error("Failed to fetch recent jobs", err);
         setError("Network error. Could not connect to the server.");

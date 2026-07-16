@@ -1,11 +1,10 @@
-from agents.agent_common.llm import GeminiProvider
-from agents.agent_common.ollama_provider import OllamaProvider
+from agents.agent_common.llm import GeminiProvider, OllamaProvider, BaseLLMProvider
 from backend.app.config import get_settings
 
 settings = get_settings()
 
-def get_llm_provider(**kwargs):
-    provider = settings.default_llm_provider.lower()
+def get_llm_provider(*, provider_name: str | None = None, **kwargs) -> BaseLLMProvider:
+    provider = (provider_name or settings.default_llm_provider).lower()
 
     if provider == "gemini":
         return GeminiProvider(

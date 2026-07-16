@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, use } from "react";
+import { useState, useEffect, useLayoutEffect, use, useRef } from "react";
 import { PageFrame } from "@/components/platform/platform-shell";
 import ExecutiveDashboard from "@/components/dashboard/ExecutiveDashboard";
 import InvestorCopilot from "@/components/copilot/InvestorCopilot";
@@ -13,6 +13,7 @@ import {
   Sparkles,
   X
 } from "lucide-react";
+import apiClient from "@/lib/api";
 
 interface JobStep {
   id: string;
@@ -50,49 +51,66 @@ export default function AnalysisDetailPage({
   );
   const [selectedPage, setSelectedPage] = useState<number>(1);
   const [error, setError] = useState<string | null>(null);
+  const resultRequestedRef = useRef(false);
+  const pageScrollTopRef = useRef(0);
 
   useEffect(() => {
-    let intervalId: NodeJS.Timeout;
+    const rememberScrollPosition = () => {
+      pageScrollTopRef.current = window.scrollY;
+    };
+    window.addEventListener("scroll", rememberScrollPosition, { passive: true });
+    return () => window.removeEventListener("scroll", rememberScrollPosition);
+  }, []);
+
+  useLayoutEffect(() => {
+    if (job?.status !== "completed" && pageScrollTopRef.current > 0) {
+      window.scrollTo({ top: pageScrollTopRef.current, behavior: "auto" });
+    }
+  }, [job, steps]);
+
+  useEffect(() => {
+    let intervalId: ReturnType<typeof setInterval> | undefined;
+    let cancelled = false;
 
     const fetchJob = async () => {
       try {
-        const [jobRes, stepsRes] = await Promise.all([
-          fetch(`http://localhost:8000/api/v1/jobs/${id}`),
-          fetch(`http://localhost:8000/api/v1/jobs/${id}/steps`)
+        const [jobResponse, stepsResponse] = await Promise.all([
+          apiClient.get<Job>(`/jobs/${id}`),
+          apiClient.get<JobStep[]>(`/jobs/${id}/steps`)
         ]);
-        if (jobRes.ok) {
-          const jobData = await jobRes.json();
-          setJob(jobData);
-          if (jobData.started_at && jobData.status !== "completed" && jobData.status !== "failed") {
+        if (cancelled) return;
+        const jobData = jobResponse.data;
+        setJob((current) => JSON.stringify(current) === JSON.stringify(jobData) ? current : jobData);
+        if (jobData.started_at && jobData.status !== "completed" && jobData.status !== "failed") {
             const start = new Date(jobData.started_at).getTime();
             setElapsedTime(Math.floor((Date.now() - start) / 1000));
-          }
-          if (jobData.status === "completed" && !result) {
-            const resultRes = await fetch(`http://localhost:8000/api/v1/jobs/${id}/result`);
-            if (resultRes.ok) {
-              setResult(await resultRes.json());
-            }
-          }
-        } else {
-          setError("Analysis Job Not Found or Server Error.");
-          clearInterval(intervalId);
         }
-        if (stepsRes.ok) {
-          const stepsData = await stepsRes.json();
-          setSteps(stepsData);
+        if (jobData.status === "completed" && !resultRequestedRef.current) {
+          resultRequestedRef.current = true;
+          const resultResponse = await apiClient.get(`/jobs/${id}/result`);
+          if (cancelled) return;
+          setResult(resultResponse.data);
+        }
+        const stepsData = stepsResponse.data;
+        setSteps((current) => JSON.stringify(current) === JSON.stringify(stepsData) ? current : stepsData);
+        if (jobData.status === "completed" || jobData.status === "failed") {
+          if (intervalId) clearInterval(intervalId);
         }
       } catch (e) {
         console.error("Failed to fetch job", e);
         setError("Network error. Could not connect to the server.");
-        clearInterval(intervalId);
+        if (intervalId) clearInterval(intervalId);
       }
     };
 
     fetchJob();
     intervalId = setInterval(fetchJob, 2000);
 
-    return () => clearInterval(intervalId);
-  }, [id, result]);
+    return () => {
+      cancelled = true;
+      if (intervalId) clearInterval(intervalId);
+    };
+  }, [id]);
 
   // -------------------------------------------------------------
   // ERROR VIEW
@@ -162,7 +180,7 @@ export default function AnalysisDetailPage({
             <ExecutiveDashboard result={result} />
           ) : (
             <div className="h-[calc(100vh-210px)] w-full">
-              <InvestorCopilot documentId={id} />
+              <InvestorCopilot documentId={result.document_id} />
             </div>
           )}
         </div>

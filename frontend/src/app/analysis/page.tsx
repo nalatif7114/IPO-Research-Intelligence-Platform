@@ -4,18 +4,15 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Loader2 } from "lucide-react";
 import { PageFrame, PlatformHeader } from "@/components/platform/platform-shell";
+import apiClient from "@/lib/api";
 
 export default function AnalysisWrapperPage() {
   const router = useRouter();
   const [error, setError] = useState<boolean>(false);
 
   useEffect(() => {
-    fetch("http://localhost:8000/api/v1/jobs?page_size=1")
-      .then((res) => {
-        if (!res.ok) throw new Error();
-        return res.json();
-      })
-      .then((data) => {
+    apiClient.get("/jobs?page_size=1")
+      .then(({ data }) => {
         if (data.items && data.items.length > 0) {
           const id = data.items[0].id;
           router.replace(`/analysis/${id}`);

@@ -1,10 +1,14 @@
 from agents.agent_common.llm_agent import ReasoningAgent
 from agents.agent_common.base_agent import AgentConfig
+from agents.agent_common.provider_factory import get_llm_provider
 from agents.evaluation.schemas import EvaluationInput, EvaluationOutput
 
 class EvaluationAgent(ReasoningAgent[EvaluationInput, EvaluationOutput]):
     def __init__(self):
         super().__init__(AgentConfig(name="evaluation"), EvaluationOutput)
+        # Evaluation results are a production quality gate: always use Ollama,
+        # even if another agent changes the application's default provider.
+        self.llm_provider = get_llm_provider(provider_name="ollama")
         
     async def validate_input(self, input_data: EvaluationInput) -> bool:
         return True

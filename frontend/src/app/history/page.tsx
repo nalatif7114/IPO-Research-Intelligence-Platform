@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { Activity, AlertTriangle, ArrowUpDown, CalendarDays, ChevronLeft, ChevronRight, Clock3, FileText, Filter, LayoutDashboard, Search, Trash2, Loader2 } from 'lucide-react'
 import { useMemo, useState, useEffect } from 'react'
 import { PageFrame, PlatformHeader, SectionHeading, StatusBadge } from '@/components/platform/platform-shell'
+import apiClient from '@/lib/api'
 
 interface Job {
   id: string;
@@ -35,14 +36,9 @@ export default function AnalysisHistoryPage() {
   useEffect(() => {
     const fetchJobs = async () => {
       try {
-        const res = await fetch("http://localhost:8000/api/v1/jobs");
-        if (res.ok) {
-          const data = await res.json();
-          setJobs(data.items || []);
-          setTotal(data.total || 0);
-        } else {
-          setError("Failed to load history. Please try again later.");
-        }
+        const { data } = await apiClient.get("/jobs");
+        setJobs(data.items || []);
+        setTotal(data.total || 0);
       } catch (err) {
         console.error("Failed to fetch jobs", err);
         setError("Network error. Could not connect to the server.");
