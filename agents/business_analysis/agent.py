@@ -1,12 +1,12 @@
 from agents.agent_common.llm_agent import ReasoningAgent
 from agents.agent_common.base_agent import AgentConfig
-from agents.agent_common.llm import GeminiProvider
+from agents.agent_common.provider_factory import get_llm_provider
 from agents.business_analysis.schemas import BusinessAnalysisInput, BusinessAnalysisOutput
 
 class BusinessAnalysisAgent(ReasoningAgent[BusinessAnalysisInput, BusinessAnalysisOutput]):
     def __init__(self):
         super().__init__(AgentConfig(name="business_analysis"), BusinessAnalysisOutput)
-        self.llm_provider = GeminiProvider()
+        self.llm_provider = get_llm_provider()
         
     async def validate_input(self, input_data: BusinessAnalysisInput) -> bool:
         return True

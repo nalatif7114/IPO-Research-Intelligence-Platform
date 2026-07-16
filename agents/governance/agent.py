@@ -3,7 +3,7 @@ from agents.agent_common.llm_agent import ReasoningAgent
 from agents.agent_common.base_agent import AgentConfig
 from agents.governance.schemas import GovernanceInput, GovernanceOutput, GovernanceMetric
 from backend.app.config import get_settings
-from agents.agent_common.llm import GeminiProvider
+from agents.agent_common.provider_factory import get_llm_provider
 import structlog
 
 logger = structlog.stdlib.get_logger(__name__)
@@ -13,7 +13,7 @@ class GovernanceAgent(ReasoningAgent[GovernanceInput, GovernanceOutput]):
         super().__init__(AgentConfig(name="governance"), GovernanceOutput)
         settings = get_settings()
         
-        self.llm_provider = GeminiProvider(
+        self.llm_provider = get_llm_provider(
             temperature=settings.llm_temperature,
             top_p=settings.llm_top_p,
             max_output_tokens=settings.llm_max_output_tokens,
@@ -76,8 +76,8 @@ class GovernanceAgent(ReasoningAgent[GovernanceInput, GovernanceOutput]):
                     "governance_analysis_attempt", 
                     attempt=attempt, 
                     document_id=input_data.document_id,
-                    provider="GeminiProvider",
-                    model="gemini-1.5-pro"
+                    provider=self.llm_provider.provider_name,
+                    model=self.llm_provider.model_name
                 )
                 
                 output = await self.execute_reasoning(query, input_data.document_id)

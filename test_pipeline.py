@@ -7,7 +7,7 @@ BASE_URL = "http://localhost:8000/api/v1"
 
 print("Uploading test prospectus...")
 # Check if GoTo_IPO_Prospectus.pdf exists
-pdf_path = "GoTo_IPO_Prospectus.pdf"
+pdf_path = "f_prdl-prospektus-final.pdf"
 if not os.path.exists(pdf_path):
     print("PDF not found, writing a dummy PDF...")
     with open(pdf_path, "wb") as f:
@@ -56,7 +56,7 @@ if job["status"] == "completed":
     print("\nTesting Chat API...")
     chat_payload = {
         "document_id": document_id,
-        "query": "What is the primary risk associated with this company?"
+        "query": "What are the key investment risks?"
     }
     chat_res = requests.post(f"{BASE_URL}/chat/message", json=chat_payload)
     print("Chat response:", chat_res.status_code)
