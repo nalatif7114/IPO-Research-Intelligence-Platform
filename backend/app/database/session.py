@@ -14,12 +14,18 @@ from backend.app.config import get_settings
 
 _settings = get_settings()
 
+import sys
+from sqlalchemy.pool import NullPool, AsyncAdaptedQueuePool
+
+# Use NullPool for Celery workers to avoid asyncio loop issues with shared connection pools across forks.
+# Use the default QueuePool for the FastAPI application to maintain performance and avoid port exhaustion.
+pool_class = NullPool if "celery" in sys.argv[0].lower() else AsyncAdaptedQueuePool
+
 async_engine = create_async_engine(
     _settings.database_url,
     echo=_settings.database_echo,
     pool_pre_ping=True,
-    pool_size=10,
-    max_overflow=20,
+    poolclass=pool_class
 )
 
 async_session_factory = async_sessionmaker(

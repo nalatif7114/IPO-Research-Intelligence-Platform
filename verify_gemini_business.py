@@ -47,32 +47,25 @@ async def main():
     try:
         await setup_rag_mock_data(document_id)
         
-        print("[2/3] Executing Business Analysis Agent (GeminiProvider)...")
-        bus_agent = BusinessAnalysisAgent()
+        print("[2/3] Executing Business Analysis Agent...")
+        agent = BusinessAnalysisAgent()
+        input_data = BusinessAnalysisInput(
+            document_id=document_id,
+            job_id="test-job-id"
+        )
+        result = await agent.execute(input_data)
         
-        if not has_api_key:
-            print("WARNING: GEMINI_API_KEY is not set. The LLM invocation would fail.")
-            print("Since we are verifying the architecture, the script is passing structural validation.")
-            # For testing without a key, we'll manually patch the LLM provider back to Mock
-            # strictly for the test run so it doesn't crash the pipeline demonstration.
-            from agents.agent_common.llm import MockLLMProvider
-            bus_agent.llm_provider = MockLLMProvider()
+        print("\n=== Agent Output ===")
+        print(f"Company Overview: {result.company_overview}")
+        print(f"Business Model: {result.business_model}")
+        print(f"Revenue Streams: {result.revenue_streams}")
+        print(f"Competitive Advantage: {result.competitive_advantage}")
+        print(f"Industry Position: {result.industry_position}")
+        print(f"SWOT: {result.swot}")
             
-        bus_out = await bus_agent.run(BusinessAnalysisInput(document_id=document_id))
-        
-        print("\n--- Output Schema ---")
-        print("Company Overview:", bus_out.company_overview)
-        print("Business Model:", bus_out.business_model)
-        print("SWOT:", bus_out.swot)
-        print("\nCitations:")
-        for cit in bus_out.citations:
-            print(f" - {cit}")
-        
-        print("\n[3/3] Verification Complete! BusinessAnalysisAgent uses GeminiProvider and RAG successfully.")
-        
+        print(f"\n[3/3] Verification Complete! BusinessAnalysisAgent uses {agent.llm_provider.provider_name} successfully.")
     except Exception as e:
-        print(f"Verification Failed: {e}")
-        traceback.print_exc()
+        print(f"\n[Error] Verification failed: {e}")
 
 if __name__ == "__main__":
     asyncio.run(main())

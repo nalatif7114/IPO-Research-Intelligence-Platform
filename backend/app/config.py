@@ -34,12 +34,14 @@ class Settings(BaseSettings):
     # LLM
     openai_api_key: str = ""
     anthropic_api_key: str = ""
-    default_llm_provider: str = "openai"
-    default_llm_model: str = "gpt-4.1"
+    default_llm_provider: str = "ollama"
+    default_llm_model: str = "qwen3:8b"
+    ollama_base_url: str = "http://host.docker.internal:11434"
+    ollama_model: str = "qwen3:8b"
     llm_temperature: float = 0.0
     llm_top_p: float = 0.9
     llm_max_output_tokens: int = 8192
-    llm_timeout: int = 120
+    llm_timeout: int = 600
     llm_max_retries: int = 1
 
     # Embedding

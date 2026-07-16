@@ -1,5 +1,6 @@
 frontend/node_modules
 frontend/.next
+frontend-v0
 .venv
 __pycache__
 *.pyc

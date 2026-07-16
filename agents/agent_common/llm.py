@@ -6,12 +6,27 @@ import asyncio
 from tenacity import retry, stop_after_attempt, wait_exponential
 from pydantic import BaseModel
 import structlog
-from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.prompts import PromptTemplate
+from langchain_ollama import ChatOllama
 
 logger = structlog.stdlib.get_logger(__name__)
 
 T = TypeVar("T", bound=BaseModel)
+
+class OllamaProvider:
+
+    def __init__(self):
+        self.llm = ChatOllama(
+            model="qwen3:8b",
+            base_url="http://host.docker.internal:11434",
+            temperature=0
+        )
+
+    async def ainvoke(self, messages):
+        return await self.llm.ainvoke(messages)
+
+    def invoke(self, messages):
+        return self.llm.invoke(messages)
 
 class LLMProvider(abc.ABC):
     """Abstract interface for LLM Reasoning generation."""
@@ -74,29 +89,8 @@ class MockLLMProvider(LLMProvider):
     async def generate_text(self, prompt: str) -> str:
         return "This is a mocked LLM text response based on the provided context."
 
-import asyncio
-import os
-from typing import TypeVar, Type
-from pydantic import BaseModel
-from tenacity import retry, stop_after_attempt, wait_exponential
-import structlog
-from langchain_google_genai import ChatGoogleGenerativeAI
-
-logger = structlog.stdlib.get_logger(__name__)
-
-T = TypeVar("T", bound=BaseModel)
-
-import asyncio
 import os
 import re
-from typing import TypeVar, Type
-from pydantic import BaseModel
-import structlog
-from langchain_google_genai import ChatGoogleGenerativeAI
-
-logger = structlog.stdlib.get_logger(__name__)
-
-T = TypeVar("T", bound=BaseModel)
 
 # Global semaphore set to 1 to ensure strictly sequential Gemini API requests
 _gemini_semaphore = asyncio.Semaphore(1)
@@ -140,6 +134,7 @@ class GeminiProvider(LLMProvider):
             self._init_llm(self.candidate_models[0])
 
     def _init_llm(self, model: str):
+        from langchain_google_genai import ChatGoogleGenerativeAI
         self.current_model = model
         self.llm = ChatGoogleGenerativeAI(
             model=model,

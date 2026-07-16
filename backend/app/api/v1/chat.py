@@ -16,7 +16,8 @@ from backend.app.config import get_settings
 from backend.app.dependencies import get_db_session
 from backend.app.models.job import Job
 from backend.app.models.document import Document
-from agents.agent_common.llm import GeminiProvider, MockLLMProvider
+from agents.agent_common.llm import MockLLMProvider
+from agents.agent_common.provider_factory import get_llm_provider
 from rag.retriever import HybridRetriever, MockReRanker
 from rag.context_builder import TokenBudgetContextBuilder
 from vector_store.qdrant_client import QdrantVectorStore
@@ -95,12 +96,7 @@ Instructions:
     if not api_key or api_key == "mock" or api_key.startswith("YOUR_"):
         llm_provider = MockLLMProvider()
     else:
-        llm_provider = GeminiProvider(
-            temperature=settings.llm_temperature,
-            top_p=settings.llm_top_p,
-            max_output_tokens=settings.llm_max_output_tokens,
-            timeout_seconds=settings.llm_timeout
-        )
+        llm_provider = get_llm_provider()
     
     try:
         class ChatStruct(BaseModel):
