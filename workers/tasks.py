@@ -5,6 +5,9 @@ from agents.orchestrator.agent import OrchestratorAgent
 from agents.orchestrator.schemas import OrchestratorInput
 
 async def _run_orchestrator(job_id: str, document_id: str, prospectus_id: str):
+    import structlog
+    structlog.contextvars.bind_contextvars(job_id=job_id)
+    
     agent = OrchestratorAgent()
     input_data = OrchestratorInput(
         job_id=job_id,

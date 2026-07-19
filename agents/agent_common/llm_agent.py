@@ -48,6 +48,11 @@ class ReasoningAgent(BaseAgent[InputT, OutputT], abc.ABC):
         
         # 1. RAG Retrieval
         retrieval_started = time.perf_counter()
+        self.logger.info(
+            "retrieval_debug",
+            document_id=document_id,
+            query=query,
+        )
         results = await self.retriever.retrieve(
             query=query, 
             top_k=5, 

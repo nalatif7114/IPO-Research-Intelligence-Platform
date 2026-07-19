@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useEffect, useLayoutEffect, use, useRef } from "react";
+import { useState, useEffect, useRef, use } from "react";
+import * as import_react from "react";
 import { PageFrame } from "@/components/platform/platform-shell";
 import ExecutiveDashboard from "@/components/dashboard/ExecutiveDashboard";
 import InvestorCopilot from "@/components/copilot/InvestorCopilot";
@@ -33,9 +34,20 @@ interface Job {
   progress: number;
   created_at: string;
   started_at: string | null;
+  completed_at: string | null;
 }
 
-export default function AnalysisDetailPage({
+const TERMINAL_STATUSES = new Set(["completed", "failed", "cancelled"]);
+
+export default function AnalysisDetailPage(props: { params: Promise<{ id: string }> }) {
+  return (
+    <import_react.Suspense fallback={<PageFrame>Loading...</PageFrame>}>
+      <AnalysisDetailPageInner {...props} />
+    </import_react.Suspense>
+  );
+}
+
+function AnalysisDetailPageInner({
   params,
 }: {
   params: Promise<{ id: string }>;
@@ -44,62 +56,99 @@ export default function AnalysisDetailPage({
   const [job, setJob] = useState<Job | null>(null);
   const [steps, setSteps] = useState<JobStep[]>([]);
   const [result, setResult] = useState<any>(null);
+  const [logs, setLogs] = useState<any[]>([]);
   const searchParams = useSearchParams();
-  const [elapsedTime, setElapsedTime] = useState<number>(0);
   const [activeTab, setActiveTab] = useState<"dashboard" | "copilot">(
     (searchParams.get("tab") as "dashboard" | "copilot") || "dashboard"
   );
   const [selectedPage, setSelectedPage] = useState<number>(1);
   const [error, setError] = useState<string | null>(null);
+
+  // Refs for polling correctness
   const resultRequestedRef = useRef(false);
-  const pageScrollTopRef = useRef(0);
-
-  useEffect(() => {
-    const rememberScrollPosition = () => {
-      pageScrollTopRef.current = window.scrollY;
-    };
-    window.addEventListener("scroll", rememberScrollPosition, { passive: true });
-    return () => window.removeEventListener("scroll", rememberScrollPosition);
-  }, []);
-
-  useLayoutEffect(() => {
-    if (job?.status !== "completed" && pageScrollTopRef.current > 0) {
-      window.scrollTo({ top: pageScrollTopRef.current, behavior: "auto" });
-    }
-  }, [job, steps]);
+  const terminalRef = useRef(false);
+  const inFlightRef = useRef(false);
+  const requestIdRef = useRef(0);
 
   useEffect(() => {
     let intervalId: ReturnType<typeof setInterval> | undefined;
     let cancelled = false;
 
     const fetchJob = async () => {
+      // Guard: don't fire if already in-flight or terminal
+      if (inFlightRef.current || terminalRef.current) return;
+      inFlightRef.current = true;
+
+      const thisRequest = ++requestIdRef.current;
+
       try {
-        const [jobResponse, stepsResponse] = await Promise.all([
+        const [jobResponse, stepsResponse, logsResponse] = await Promise.all([
           apiClient.get<Job>(`/jobs/${id}`),
-          apiClient.get<JobStep[]>(`/jobs/${id}/steps`)
+          apiClient.get<JobStep[]>(`/jobs/${id}/steps`),
+          apiClient.get<any[]>(`/jobs/${id}/logs`).catch(() => ({ data: [] }))
         ]);
-        if (cancelled) return;
+
+        // Discard stale responses
+        if (cancelled || thisRequest !== requestIdRef.current) return;
+
         const jobData = jobResponse.data;
-        setJob((current) => JSON.stringify(current) === JSON.stringify(jobData) ? current : jobData);
-        if (jobData.started_at && jobData.status !== "completed" && jobData.status !== "failed") {
-            const start = new Date(jobData.started_at).getTime();
-            setElapsedTime(Math.floor((Date.now() - start) / 1000));
-        }
+        setJob((current) => {
+          if (
+            current &&
+            current.status === jobData.status &&
+            current.progress === jobData.progress &&
+            current.started_at === jobData.started_at &&
+            current.completed_at === jobData.completed_at
+          ) {
+            return current; // Referentially stable — no re-render
+          }
+          return jobData;
+        });
+
+        // Fetch result once on completion
         if (jobData.status === "completed" && !resultRequestedRef.current) {
           resultRequestedRef.current = true;
           const resultResponse = await apiClient.get(`/jobs/${id}/result`);
-          if (cancelled) return;
-          setResult(resultResponse.data);
+          if (!cancelled && thisRequest === requestIdRef.current) {
+            setResult(resultResponse.data);
+          }
         }
+
         const stepsData = stepsResponse.data;
-        setSteps((current) => JSON.stringify(current) === JSON.stringify(stepsData) ? current : stepsData);
-        if (jobData.status === "completed" || jobData.status === "failed") {
+        setSteps((current) => {
+          // Compare by serializing only if lengths match to avoid unnecessary work
+          if (current.length === stepsData.length) {
+            const changed = stepsData.some(
+              (s, i) =>
+                s.status !== current[i].status ||
+                s.progress !== current[i].progress ||
+                s.started_at !== current[i].started_at ||
+                s.completed_at !== current[i].completed_at
+            );
+            if (!changed) return current; // Referentially stable
+          }
+          return stepsData;
+        });
+
+        const logsData = logsResponse.data;
+        setLogs((current) => {
+          if (current.length === logsData.length) return current;
+          return logsData;
+        });
+
+        // Stop polling on terminal state
+        if (TERMINAL_STATUSES.has(jobData.status)) {
+          terminalRef.current = true;
           if (intervalId) clearInterval(intervalId);
         }
       } catch (e) {
-        console.error("Failed to fetch job", e);
-        setError("Network error. Could not connect to the server.");
-        if (intervalId) clearInterval(intervalId);
+        if (!cancelled) {
+          console.error("Failed to fetch job", e);
+          setError("Network error. Could not connect to the server.");
+          if (intervalId) clearInterval(intervalId);
+        }
+      } finally {
+        inFlightRef.current = false;
       }
     };
 
@@ -194,7 +243,13 @@ export default function AnalysisDetailPage({
   return (
     <PageFrame>
       <div className="-mx-6 lg:-mx-8 -my-6 lg:-my-8">
-        <AnalysisWorkspace job={job} steps={steps} elapsedTime={elapsedTime} />
+        <AnalysisWorkspace
+          job={job}
+          steps={steps}
+          logs={logs}
+          startedAt={job?.started_at ?? null}
+          completedAt={job?.completed_at ?? null}
+        />
       </div>
     </PageFrame>
   );
