@@ -7,9 +7,33 @@ from __future__ import annotations
 
 import logging
 import sys
+import json
+import redis
 
 import structlog
 
+
+_redis_client = None
+
+def redis_log_processor(logger: logging.Logger, log_method: str, event_dict: dict) -> dict:
+    """Push logs containing a job_id to a Redis list."""
+    job_id = event_dict.get("job_id")
+    if job_id:
+        global _redis_client
+        if _redis_client is None:
+            from backend.app.config import get_settings
+            settings = get_settings()
+            _redis_client = redis.from_url(settings.redis_url)
+        
+        try:
+            log_entry = json.dumps(event_dict, default=str)
+            list_key = f"job_logs:{job_id}"
+            _redis_client.rpush(list_key, log_entry)
+            _redis_client.ltrim(list_key, -1000, -1)
+            _redis_client.expire(list_key, 86400)
+        except Exception:
+            pass
+    return event_dict
 
 def setup_logging(*, log_level: str = "INFO", app_env: str = "development") -> None:
     """Configure structlog and standard-library logging.
@@ -28,6 +52,7 @@ def setup_logging(*, log_level: str = "INFO", app_env: str = "development") -> N
         structlog.processors.TimeStamper(fmt="iso"),
         structlog.processors.StackInfoRenderer(),
         structlog.processors.UnicodeDecoder(),
+        redis_log_processor,
     ]
 
     if app_env == "production":

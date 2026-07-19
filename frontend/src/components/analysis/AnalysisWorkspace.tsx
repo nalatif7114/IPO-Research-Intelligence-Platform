@@ -53,7 +53,9 @@ interface Job {
 interface AnalysisWorkspaceProps {
   job: Job | null;
   steps: JobStep[];
-  elapsedTime: number;
+  logs?: any[];
+  startedAt: string | null;
+  completedAt: string | null;
 }
 
 function StateGlyph({ state, paused }: { state: StageState; paused: boolean }) {
@@ -72,24 +74,53 @@ function StateGlyph({ state, paused }: { state: StageState; paused: boolean }) {
   return <span className="block size-1.5 rounded-full bg-muted-foreground/40" />
 }
 
-export function AnalysisWorkspace({ job, steps, elapsedTime }: AnalysisWorkspaceProps) {
+export function AnalysisWorkspace({ job, steps, logs = [], startedAt, completedAt }: AnalysisWorkspaceProps) {
   const [view, setView] = useState<View>('Thinking')
   const [selectedStage, setSelectedStage] = useState(0)
   const [paused, setPaused] = useState(false)
   const [leftOpen, setLeftOpen] = useState(true)
   const [rightOpen, setRightOpen] = useState(true)
   const [copied, setCopied] = useState(false)
+  const [elapsedTime, setElapsedTime] = useState(0)
   const workspaceScrollRef = useRef<HTMLDivElement>(null)
   const workspaceScrollTopRef = useRef(0)
   const reduceMotion = useReducedMotion()
 
-  // Find the currently running stage to auto-select it if user hasn't manually selected
   useEffect(() => {
+    if (!startedAt) {
+      setElapsedTime(0);
+      return;
+    }
+    const startMs = new Date(startedAt).getTime();
+    if (job && (job.status === 'completed' || job.status === 'failed' || job.status === 'cancelled')) {
+      const endMs = completedAt ? new Date(completedAt).getTime() : Date.now();
+      setElapsedTime(Math.floor((endMs - startMs) / 1000));
+      return;
+    }
+    const tick = () => setElapsedTime(Math.floor((Date.now() - startMs) / 1000));
+    tick();
+    const interval = setInterval(tick, 1000);
+    return () => clearInterval(interval);
+  }, [startedAt, completedAt, job?.status]);
+
+  const userSelectedStageRef = useRef(false)
+
+  // Auto-follow the running stage, but only until the user manually picks one.
+  // Previously this ran on every polling update (new `steps` reference each
+  // 2s tick) and force-reselected the running stage every time, silently
+  // discarding whatever stage the user had clicked on.
+  useEffect(() => {
+    if (userSelectedStageRef.current) return
     const runningIndex = steps.findIndex(s => s.status === 'running')
     if (runningIndex !== -1) {
       setSelectedStage(runningIndex)
     }
   }, [steps])
+
+  const selectStage = (index: number) => {
+    userSelectedStageRef.current = true
+    setSelectedStage(index)
+  }
 
   // Polling updates data only. Restore the internal workspace scroll offset so
   // an updated status never moves the reader back to the top.
@@ -116,6 +147,7 @@ export function AnalysisWorkspace({ job, steps, elapsedTime }: AnalysisWorkspace
   const currentStep = steps[selectedStage] || null;
   const runningStep = steps.find(s => s.status === 'running') || currentStep;
   const completedCount = steps.filter(s => s.status === 'completed').length;
+  const stageCompletionPct = job?.progress !== undefined ? Math.round(job.progress) : 0;
   const uploadedProspectusStatus = steps.some(s => s.status === 'failed')
     ? 'Failed'
     : runningStep
@@ -186,7 +218,7 @@ export function AnalysisWorkspace({ job, steps, elapsedTime }: AnalysisWorkspace
                     return (
                       <button
                         key={stage.id}
-                        onClick={() => setSelectedStage(index)}
+                        onClick={() => selectStage(index)}
                         aria-current={selectedStage === index ? 'step' : undefined}
                         className="group relative flex min-w-[230px] items-start gap-3 rounded-md px-2.5 py-2 text-left transition-colors hover:bg-accent/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring lg:min-w-0"
                       >
@@ -273,13 +305,29 @@ export function AnalysisWorkspace({ job, steps, elapsedTime }: AnalysisWorkspace
                   )}
 
                   {view === 'Logs' && (
-                    <div className="panel p-2 font-mono text-[11px] min-h-[200px] flex items-center justify-center">
-                      <div className="max-w-sm px-4 text-center text-muted-foreground">
-                        <TerminalSquare className="mx-auto mb-3 size-4 text-primary" />
-                        <p className="text-xs font-medium text-foreground">Live agent logs are unavailable</p>
-                        <p className="mt-1 text-[11px] leading-relaxed">This deployment does not expose a job-log stream. Job stage status and failures remain available in the pipeline view.</p>
+                    logs.length > 0 ? (
+                      <div className="panel p-3 font-mono text-[11px] min-h-[200px] max-h-[420px] overflow-y-auto flex flex-col gap-1.5">
+                        {logs.map((entry) => (
+                          <div key={entry.id} className="flex items-start gap-2 text-muted-foreground">
+                            <span className="shrink-0 text-[10px] opacity-60">{new Date(entry.timestamp).toLocaleTimeString()}</span>
+                            <span className={`shrink-0 uppercase text-[10px] ${entry.level === 'error' ? 'text-destructive' : entry.level === 'warning' ? 'text-primary' : 'text-muted-foreground/70'}`}>{entry.level}</span>
+                            <span className="text-foreground">{entry.event}</span>
+                            {entry.step_name && <span className="opacity-60">· {entry.step_name}</span>}
+                            {entry.message && <span className="truncate opacity-80">{entry.message}</span>}
+                          </div>
+                        ))}
                       </div>
-                    </div>
+                    ) : (
+                      <div className="panel p-2 font-mono text-[11px] min-h-[200px] flex items-center justify-center">
+                        <div className="max-w-sm px-4 text-center text-muted-foreground">
+                          <TerminalSquare className="mx-auto mb-3 size-4 text-primary" />
+                          <p className="text-xs font-medium text-foreground">Live agent logs are unavailable</p>
+                          <p className="mt-1 text-[11px] leading-relaxed">
+                            Waiting for log events from the agent pipeline.
+                          </p>
+                        </div>
+                      </div>
+                    )
                   )}
 
                   {view === 'Progress' && (
@@ -287,12 +335,12 @@ export function AnalysisWorkspace({ job, steps, elapsedTime }: AnalysisWorkspace
                       <div className="flex items-end justify-between">
                         <div>
                           <p className="eyebrow">Agent completion</p>
-                          <p className="mt-2 text-4xl font-semibold">{Math.max(5, job?.progress || 0)}%</p>
+                          <p className="mt-2 text-4xl font-semibold">{stageCompletionPct}%</p>
                         </div>
                         <span className="font-mono text-[10px] text-muted-foreground">{completedCount} of {steps.length} checkpoints</span>
                       </div>
                       <div className="mt-6 h-2 overflow-hidden rounded-full bg-secondary">
-                        <div className="h-full rounded-full bg-primary" style={{ width: `${Math.max(5, job?.progress || 0)}%` }} />
+                        <div className="h-full rounded-full bg-primary" style={{ width: `${stageCompletionPct}%` }} />
                       </div>
                       <p className="mt-4 text-xs leading-relaxed text-muted-foreground">The multi-agent pipeline is orchestrating the document review.</p>
                     </div>

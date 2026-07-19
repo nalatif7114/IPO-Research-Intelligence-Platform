@@ -44,7 +44,7 @@ class OrchestratorAgent(BaseAgent[OrchestratorInput, OrchestratorOutput]):
     async def _update_job_step(self, job_id: str, step_name: str, step_order: int, status: str, result: dict = None):
         from backend.app.database.session import async_session_factory
         from backend.app.models.job import JobStep, JobStatus, Job
-        from sqlalchemy import select
+        from sqlalchemy import select, func
         from datetime import datetime, timezone
         import uuid
         
@@ -79,7 +79,13 @@ class OrchestratorAgent(BaseAgent[OrchestratorInput, OrchestratorOutput]):
                 stmt_job = select(Job).where(Job.id == uuid.UUID(job_id))
                 job = (await session.execute(stmt_job)).scalar_one_or_none()
                 if job:
-                    job.progress = min(99.0, job.progress + 9.0)
+                    completed_steps_stmt = select(func.count(JobStep.id)).where(
+                        JobStep.job_id == uuid.UUID(job_id),
+                        JobStep.status == JobStatus.COMPLETED,
+                    )
+                    total_steps = 10
+                    completed_steps = (await session.execute(completed_steps_stmt)).scalar() or 0
+                    job.progress = round((completed_steps / total_steps) * 100, 2)
 
             if status == "failed":
                 stmt_job = select(Job).where(Job.id == uuid.UUID(job_id))
@@ -234,5 +240,3 @@ class OrchestratorAgent(BaseAgent[OrchestratorInput, OrchestratorOutput]):
     async def handle_error(self, error: Exception) -> None:
         """Log and potentially escalate orchestration failures."""
         self.logger.error("orchestrator_failed", error=str(error))
-
-

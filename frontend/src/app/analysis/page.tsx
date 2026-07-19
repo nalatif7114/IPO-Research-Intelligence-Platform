@@ -1,44 +1,216 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
-import { Loader2 } from "lucide-react";
-import { PageFrame, PlatformHeader } from "@/components/platform/platform-shell";
+import { useState, useEffect, use, useRef } from "react";
+import * as import_react from "react";
+import { PageFrame } from "@/components/platform/platform-shell";
+import ExecutiveDashboard from "@/components/dashboard/ExecutiveDashboard";
+import InvestorCopilot from "@/components/copilot/InvestorCopilot";
+import { AnalysisWorkspace } from "@/components/analysis/AnalysisWorkspace";
+import { useSearchParams } from "next/navigation";
+import {
+  Check,
+  LayoutDashboard,
+  MessageSquare,
+  Sparkles,
+  X
+} from "lucide-react";
 import apiClient from "@/lib/api";
 
-export default function AnalysisWrapperPage() {
-  const router = useRouter();
-  const [error, setError] = useState<boolean>(false);
+interface JobStep {
+  id: string;
+  step_name: string;
+  step_order: number;
+  status: "pending" | "running" | "completed" | "failed";
+  progress: number;
+  started_at: string | null;
+  completed_at: string | null;
+  error_message: string | null;
+}
+
+interface Job {
+  id: string;
+  job_type: string;
+  status: string;
+  progress: number;
+  created_at: string;
+  started_at: string | null;
+  completed_at: string | null;
+}
+
+const TERMINAL_STATUSES = new Set(["completed", "failed", "cancelled"]);
+
+export default function AnalysisDetailPage(props: { params: Promise<{ id: string }> }) {
+  return (
+    <import_react.Suspense fallback={<PageFrame>Loading...</PageFrame>}>
+      <AnalysisDetailPageInner {...props} />
+    </import_react.Suspense>
+  );
+}
+
+function AnalysisDetailPageInner({
+  params,
+}: {
+  params: Promise<{ id: string }>;
+}) {
+  const { id } = use(params);
+  const [job, setJob] = useState<Job | null>(null);
+  const [steps, setSteps] = useState<JobStep[]>([]);
+  const [result, setResult] = useState<any>(null);
+  const searchParams = useSearchParams();
+  const [elapsedTime, setElapsedTime] = useState<number>(0);
+  const [activeTab, setActiveTab] = useState<"dashboard" | "copilot">(
+    (searchParams.get("tab") as "dashboard" | "copilot") || "dashboard"
+  );
+  const [selectedPage, setSelectedPage] = useState<number>(1);
+  const [error, setError] = useState<string | null>(null);
+  const resultRequestedRef = useRef(false);
 
   useEffect(() => {
-    apiClient.get("/jobs?page_size=1")
-      .then(({ data }) => {
-        if (data.items && data.items.length > 0) {
-          const id = data.items[0].id;
-          router.replace(`/analysis/${id}`);
-        } else {
-          setError(true);
-        }
-      })
-      .catch(() => setError(true));
-  }, [router]);
+    let intervalId: ReturnType<typeof setInterval> | undefined;
+    let cancelled = false;
+    let requestSeq = 0;
+    let latestAppliedSeq = 0;
+    let inFlight = false;
 
+    const fetchJob = async () => {
+      if (inFlight) return; // avoid overlapping requests if one poll takes longer than the interval
+      inFlight = true;
+      const seq = ++requestSeq;
+      try {
+        const [jobResponse, stepsResponse] = await Promise.all([
+          apiClient.get<Job>(`/jobs/${id}`),
+          apiClient.get<JobStep[]>(`/jobs/${id}/steps`)
+        ]);
+        if (cancelled || seq < latestAppliedSeq) return; // stale response, a newer request already landed
+        latestAppliedSeq = seq;
+
+        const jobData = jobResponse.data;
+        setJob((current) => JSON.stringify(current) === JSON.stringify(jobData) ? current : jobData);
+
+        const isTerminal = TERMINAL_STATUSES.has(jobData.status);
+        if (jobData.started_at) {
+          const start = new Date(jobData.started_at).getTime();
+          const end = isTerminal && jobData.completed_at ? new Date(jobData.completed_at).getTime() : Date.now();
+          setElapsedTime(Math.max(0, Math.floor((end - start) / 1000)));
+        }
+
+        if (jobData.status === "completed" && !resultRequestedRef.current) {
+          resultRequestedRef.current = true;
+          const resultResponse = await apiClient.get(`/jobs/${id}/result`);
+          if (cancelled) return;
+          setResult(resultResponse.data);
+        }
+        const stepsData = stepsResponse.data;
+        setSteps((current) => JSON.stringify(current) === JSON.stringify(stepsData) ? current : stepsData);
+        if (isTerminal && intervalId) {
+          clearInterval(intervalId);
+        }
+      } catch (e) {
+        console.error("Failed to fetch job", e);
+        setError("Network error. Could not connect to the server.");
+        if (intervalId) clearInterval(intervalId);
+      } finally {
+        inFlight = false;
+      }
+    };
+
+    fetchJob();
+    intervalId = setInterval(fetchJob, 2000);
+
+    return () => {
+      cancelled = true;
+      if (intervalId) clearInterval(intervalId);
+    };
+  }, [id]);
+
+  // -------------------------------------------------------------
+  // ERROR VIEW
+  // -------------------------------------------------------------
+  if (error) {
+    return (
+      <PageFrame>
+        <div className="flex h-[calc(100vh-100px)] flex-col items-center justify-center text-center">
+          <div className="flex size-12 items-center justify-center rounded-lg border border-destructive/25 bg-destructive/10">
+            <X className="size-6 text-destructive" />
+          </div>
+          <h1 className="mt-6 text-xl font-semibold tracking-tight">{error}</h1>
+          <p className="mt-2 max-w-sm text-sm text-muted-foreground">The requested analysis job could not be found or loaded. It may have been deleted or the server is unreachable.</p>
+        </div>
+      </PageFrame>
+    );
+  }
+
+  // -------------------------------------------------------------
+  // COMPLETED VIEW (Executive Dashboard or Copilot)
+  // -------------------------------------------------------------
+  if (job?.status === "completed" && result) {
+    return (
+      <PageFrame>
+        <div className="space-y-6 animate-fade-in max-w-[1500px] mx-auto pt-6">
+          {/* Header */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-2">
+            <div>
+              <div className="flex items-center gap-3 mb-1">
+                <div className="w-8 h-8 rounded-full bg-card border border-border flex items-center justify-center shadow-md">
+                  <Sparkles className="w-4 h-4 text-primary" />
+                </div>
+                <h1 className="text-xl md:text-2xl font-bold text-white tracking-tight">IPO Analysis Result</h1>
+              </div>
+              <p className="text-sm text-muted-foreground ml-11">Document ID: {id.substring(0,8)}...</p>
+            </div>
+            
+            <div className="flex flex-col items-end mt-4 sm:mt-0">
+              <div className="flex items-center gap-2 mb-2 px-3 py-1 bg-success/10 border border-success/20 rounded-full">
+                <Check className="w-4 h-4 text-success" />
+                <span className="text-xs font-medium text-success uppercase tracking-wider">Analysis Completed</span>
+              </div>
+              <span className="text-xs text-muted-foreground">{new Date(job.created_at).toLocaleString()}</span>
+            </div>
+          </div>
+
+          {/* Mode Toggle */}
+          <div className="flex items-center gap-2 border-b border-border pb-4">
+            <button 
+              onClick={() => setActiveTab("dashboard")}
+              className={`flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg transition-all ${activeTab === "dashboard" ? "bg-primary text-primary-foreground shadow-md" : "text-muted-foreground hover:bg-accent hover:text-foreground"}`}
+            >
+              <LayoutDashboard className="w-4 h-4" />
+              Executive Dashboard
+            </button>
+            <button 
+              onClick={() => setActiveTab("copilot")}
+              className={`flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg transition-all ${activeTab === "copilot" ? "bg-primary text-primary-foreground shadow-md" : "text-muted-foreground hover:bg-accent hover:text-foreground"}`}
+            >
+              <MessageSquare className="w-4 h-4" />
+              Investor Copilot
+            </button>
+          </div>
+
+          {/* Content */}
+          {activeTab === "dashboard" ? (
+            <ExecutiveDashboard result={result} />
+          ) : (
+            <div className="h-[calc(100vh-210px)] w-full">
+              <InvestorCopilot documentId={result.document_id} />
+            </div>
+          )}
+        </div>
+      </PageFrame>
+    );
+  }
+
+  // -------------------------------------------------------------
+  // RUNNING / LIVE VIEW
+  // -------------------------------------------------------------
   return (
     <PageFrame>
-      <PlatformHeader eyebrow="System routing" title="Locating analysis workspace" />
-      <div className="flex h-[calc(100vh-100px)] items-center justify-center">
-        {error ? (
-          <div className="text-center">
-            <h1 className="text-xl font-semibold">No active analysis found</h1>
-            <p className="mt-2 text-sm text-muted-foreground">Please upload a prospectus to begin.</p>
-            <button onClick={() => router.push('/upload')} className="mt-4 rounded-lg bg-primary px-4 py-2 text-sm text-primary-foreground">Upload prospectus</button>
-          </div>
-        ) : (
-          <div className="flex flex-col items-center gap-4">
-            <Loader2 className="size-8 animate-spin text-primary" />
-            <p className="text-sm text-muted-foreground">Redirecting to latest workspace...</p>
-          </div>
-        )}
+      <div className="-mx-6 lg:-mx-8 -my-6 lg:-my-8">
+        <AnalysisWorkspace 
+          job={job} 
+          steps={steps} 
+          startedAt={job?.started_at ?? null} 
+          completedAt={job?.completed_at ?? null} 
+        />
       </div>
     </PageFrame>
   );

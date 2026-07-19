@@ -100,3 +100,26 @@ async def get_job_steps(job_id: str, session: AsyncSession = Depends(get_db_sess
             error_message=s.error_message,
         ) for s in steps
     ]
+
+@router.get("/{job_id}/logs")
+async def get_job_logs(job_id: str):
+    """Get real-time structured logs for a job from Redis."""
+    import redis.asyncio as redis_async
+    import json
+    from backend.app.config import get_settings
+    
+    settings = get_settings()
+    r = redis_async.from_url(settings.redis_url)
+    try:
+        log_entries = await r.lrange(f"job_logs:{job_id}", 0, -1)
+    finally:
+        await r.close()
+    
+    logs = []
+    for entry in log_entries:
+        try:
+            logs.append(json.loads(entry.decode("utf-8") if isinstance(entry, bytes) else entry))
+        except Exception:
+            pass
+            
+    return logs
