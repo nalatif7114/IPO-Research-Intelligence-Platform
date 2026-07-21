@@ -1,5 +1,6 @@
 from __future__ import annotations
 import asyncio
+import time
 from typing import cast
 from langgraph.graph import StateGraph, END
 
@@ -39,7 +40,6 @@ class OrchestratorAgent(BaseAgent[OrchestratorInput, OrchestratorOutput]):
         super().__init__(config or AgentConfig(name="orchestrator"))
         self.bus = RedisEventBus(settings.redis_url)
         self.graph = self._build_graph()
-
 
     async def _update_job_step(self, job_id: str, step_name: str, step_order: int, status: str, result: dict = None):
         from backend.app.database.session import async_session_factory
@@ -98,12 +98,44 @@ class OrchestratorAgent(BaseAgent[OrchestratorInput, OrchestratorOutput]):
 
     def _wrap_node(self, step_name: str, step_order: int, node_func):
         async def wrapper(state: dict) -> dict:
+            start_time = time.time()
+            self.logger.info(
+                "pipeline_step_started",
+                step_name=step_name,
+                step_order=step_order,
+                job_id=state.get("job_id"),
+                document_id=state.get("document_id"),
+                raw_storage_path=state.get("raw_storage_path"),
+                parsed_storage_path=state.get("parsed_storage_path"),
+            )
             await self._update_job_step(state["job_id"], step_name, step_order, "running")
             try:
                 new_state = await node_func(state)
+                duration = round(time.time() - start_time, 4)
+                self.logger.info(
+                    "pipeline_step_completed",
+                    step_name=step_name,
+                    step_order=step_order,
+                    job_id=state.get("job_id"),
+                    document_id=state.get("document_id"),
+                    raw_storage_path=new_state.get("raw_storage_path"),
+                    parsed_storage_path=new_state.get("parsed_storage_path"),
+                    duration_sec=duration,
+                )
                 await self._update_job_step(state["job_id"], step_name, step_order, "completed")
                 return new_state
             except Exception as e:
+                duration = round(time.time() - start_time, 4)
+                self.logger.error(
+                    "pipeline_step_failed",
+                    step_name=step_name,
+                    step_order=step_order,
+                    job_id=state.get("job_id"),
+                    document_id=state.get("document_id"),
+                    duration_sec=duration,
+                    error_type=type(e).__name__,
+                    error_details=str(e),
+                )
                 await self._update_job_step(state["job_id"], step_name, step_order, "failed", {"error": str(e)})
                 raise
         return wrapper
@@ -220,7 +252,6 @@ class OrchestratorAgent(BaseAgent[OrchestratorInput, OrchestratorOutput]):
             stmt = select(Job).where(Job.id == uuid.UUID(input_data.job_id))
             job = (await session.execute(stmt)).scalar_one_or_none()
             if job:
-                # Store final_state in result for caching
                 job.result = dict(final_state)
                 job.status = JobStatus.COMPLETED
                 job.progress = 100.0

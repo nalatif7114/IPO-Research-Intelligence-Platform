@@ -19,7 +19,8 @@ def get_llm_provider(*, provider_name: str | None = None, **kwargs) -> BaseLLMPr
             model=settings.ollama_model,
             base_url=settings.ollama_base_url,
             temperature=settings.llm_temperature,
-            timeout_seconds=settings.llm_timeout
+            timeout_seconds=settings.llm_timeout,
+            embedding_model=settings.embedding_model,
         )
 
     raise ValueError(f"Unknown provider: {provider}")

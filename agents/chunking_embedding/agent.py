@@ -1,4 +1,5 @@
 import json
+import math
 import structlog
 import asyncio
 from agents.agent_common.base_agent import BaseAgent, AgentConfig
@@ -44,26 +45,43 @@ class ChunkingEmbeddingAgent(BaseAgent[ChunkingEmbeddingInput, ChunkingEmbedding
             raw_data = await self.storage.download(input_data.parsed_storage_path)
             parsed_json = json.loads(raw_data)
             pages = [ParsedPage(**page_dict) for page_dict in parsed_json]
+            logger.info("parsed_json_downloaded", document_id=input_data.document_id, total_pages=len(pages))
         except Exception as e:
             logger.error("failed_to_download_or_parse", error=str(e), path=input_data.parsed_storage_path)
-            # Note: The ParserOcrAgent is currently a stub and doesn't upload the file to MinIO.
-            # This will raise a NoSuchKey/S3Error during execution.
             raise
             
         # 2. Chunking
         chunks = self.chunker.chunk(pages, input_data.document_id)
+        logger.info("chunking_completed", document_id=input_data.document_id, total_chunks=len(chunks))
         if not chunks:
             return ChunkingEmbeddingOutput(
                 total_chunks=0, 
                 embedding_dimensions=self.settings.embedding_dimensions
             )
             
-        # 3. Generate Embeddings in batches
+        # 3. Generate Embeddings in batches (Optimized batch size = 64)
         embedded_vectors = []
-        batch_size = 16
-        for i in range(0, len(chunks), batch_size):
+        batch_size = 64
+        total_batches = math.ceil(len(chunks) / batch_size)
+        
+        logger.info(
+            "starting_embedding_generation", 
+            document_id=input_data.document_id, 
+            total_chunks=len(chunks), 
+            batch_size=batch_size, 
+            total_batches=total_batches
+        )
+        
+        for batch_idx, i in enumerate(range(0, len(chunks), batch_size), 1):
             batch = chunks[i:i + batch_size]
             texts = [c.content for c in batch]
+            logger.info(
+                "embedding_batch_processing",
+                document_id=input_data.document_id,
+                batch=f"{batch_idx}/{total_batches}",
+                batch_chunks=len(batch),
+                progress_percent=round((batch_idx / total_batches) * 100, 1),
+            )
             try:
                 embeddings = await self.provider.embeddings(texts)
                 for chunk, embedding in zip(batch, embeddings):
@@ -76,12 +94,16 @@ class ChunkingEmbeddingAgent(BaseAgent[ChunkingEmbeddingInput, ChunkingEmbedding
                         "payload": payload
                     })
             except Exception as e:
-                logger.error("embedding_generation_failed", error=str(e), batch_start=i)
+                logger.error("embedding_generation_failed", error=str(e), batch_idx=batch_idx, total_batches=total_batches)
                 raise
                 
+        logger.info("embedding_generation_completed", document_id=input_data.document_id, total_vectors=len(embedded_vectors))
+        
         # 4. Upsert to Qdrant
         collection_name = "global_prospectus_collection"
+        logger.info("qdrant_upsert_started", document_id=input_data.document_id, collection=collection_name, total_points=len(embedded_vectors))
         await self.vector_store.upsert(collection=collection_name, vectors=embedded_vectors)
+        logger.info("qdrant_upsert_completed", document_id=input_data.document_id, collection=collection_name, total_points=len(embedded_vectors))
         
         logger.info("chunking_embedding_completed", document_id=input_data.document_id, total_chunks=len(embedded_vectors))
         return ChunkingEmbeddingOutput(

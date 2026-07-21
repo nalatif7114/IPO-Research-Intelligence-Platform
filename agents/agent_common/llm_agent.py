@@ -9,7 +9,8 @@ from rag.retriever import HybridRetriever, BaseRetriever
 from rag.context_builder import ContextBuilder, TokenBudgetContextBuilder
 from rag.citation_manager import CitationManager, RAGCitationManager
 from vector_store.qdrant_client import QdrantVectorStore
-from embeddings.provider import MockEmbeddingProvider
+from embeddings.provider import ProductionEmbeddingProvider
+from backend.app.config import get_settings
 
 InputT = TypeVar("InputT")
 OutputT = TypeVar("OutputT")
@@ -20,21 +21,22 @@ class ReasoningAgent(BaseAgent[InputT, OutputT], abc.ABC):
     def __init__(self, config: AgentConfig, output_schema: Type[OutputT]):
         super().__init__(config)
         self.output_schema = output_schema
+        self.settings = get_settings()
         
-        # Initialize default RAG components for Phase 4
-        # In production, these should be injected via DI
-        self.vector_store = QdrantVectorStore(host="qdrant", port=6333)
-        self.embedding_provider = MockEmbeddingProvider()
+        self.vector_store = QdrantVectorStore(
+            host=self.settings.qdrant_host,
+            port=self.settings.qdrant_port,
+            embedding_dim=self.settings.embedding_dimensions
+        )
+        self.embedding_provider = ProductionEmbeddingProvider()
         
         self.retriever = HybridRetriever(
             vector_store=self.vector_store,
             embedding_provider=self.embedding_provider,
-            collection_name="global_prospectus_collection", # Assuming unified index
+            collection_name="global_prospectus_collection",
         )
         self.context_builder = TokenBudgetContextBuilder()
         self.citation_manager = RAGCitationManager()
-        # Production reasoning must always use the configured provider.  Tests
-        # that require deterministic output should inject MockLLMProvider.
         self.llm_provider = get_llm_provider()
         
     async def execute_reasoning(self, query: str, document_id: str) -> OutputT:
@@ -44,15 +46,10 @@ class ReasoningAgent(BaseAgent[InputT, OutputT], abc.ABC):
             raise RuntimeError("MockLLMProvider is not permitted in production reasoning.")
         
         execution_started = time.perf_counter()
-        self.logger.info("reasoning_started", query=query)
+        self.logger.info("reasoning_started", query=query, document_id=document_id)
         
         # 1. RAG Retrieval
         retrieval_started = time.perf_counter()
-        self.logger.info(
-            "retrieval_debug",
-            document_id=document_id,
-            query=query,
-        )
         results = await self.retriever.retrieve(
             query=query, 
             top_k=5, 
@@ -68,10 +65,9 @@ class ReasoningAgent(BaseAgent[InputT, OutputT], abc.ABC):
         
         # 4. LLM Generation
         prompt = f"Context:\n{context_window.context_text}\n\nQuery:\n{query}\n\nProvide the structured output."
-        # This is an observability-only estimate. Ollama's response metadata,
-        # logged by OllamaProvider, remains the authoritative token count.
         self.logger.info(
             "reasoning_performance",
+            document_id=document_id,
             retrieved_chunk_count=len(results),
             retrieval_latency_seconds=round(retrieval_latency_seconds, 6),
             context_characters=len(context_window.context_text),
@@ -87,6 +83,8 @@ class ReasoningAgent(BaseAgent[InputT, OutputT], abc.ABC):
             
         self.logger.info(
             "reasoning_completed",
+            document_id=document_id,
+            retrieved_chunk_count=len(results),
             execution_time_seconds=round(time.perf_counter() - execution_started, 6),
         )
         return structured_output
