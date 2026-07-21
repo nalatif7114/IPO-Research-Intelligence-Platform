@@ -293,13 +293,19 @@ class OllamaProvider(BaseLLMProvider):
         model: str = "qwen3:8b",
         base_url: str = "http://host.docker.internal:11434",
         temperature: float = 0.1,
-        timeout_seconds: int = 600
+        timeout_seconds: int = 600,
+        embedding_model: str | None = None,
     ) -> None:
         self._model_name = model
         self.base_url = base_url
         self.temperature = temperature
         self.timeout_seconds = timeout_seconds
         self._provider_name = "OllamaProvider"
+        
+        from backend.app.config import get_settings
+        settings = get_settings()
+        raw_embed_model = embedding_model or settings.embedding_model
+        self._embedding_model_name = raw_embed_model.split("/")[-1] if "/" in raw_embed_model else raw_embed_model
         
         from langchain_ollama import ChatOllama
         self.llm: Any = ChatOllama(
@@ -547,5 +553,5 @@ class OllamaProvider(BaseLLMProvider):
     async def embeddings(self, texts: list[str]) -> list[list[float]]:
         from langchain_ollama import OllamaEmbeddings
         from typing import cast
-        embeddings_model = OllamaEmbeddings(model=self._model_name, base_url=self.base_url)
+        embeddings_model = OllamaEmbeddings(model=self._embedding_model_name, base_url=self.base_url)
         return cast(list[list[float]], await embeddings_model.aembed_documents(texts))

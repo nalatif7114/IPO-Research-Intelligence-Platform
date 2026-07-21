@@ -46,13 +46,15 @@ class HybridRetriever(BaseRetriever):
         self.vector_store = vector_store
         self.embedding_provider = embedding_provider
         self.collection_name = collection_name
-        # Production callers must opt in to a concrete reranker.  The mock is
-        # retained for tests and verification scripts only.
         self.reranker = reranker
 
     async def retrieve(self, query: str, top_k: int, filters: Optional[dict] = None) -> list[RetrievalResult]:
-        # 1. Dense Search
-        query_vec = self.embedding_provider.embed_query(query)
+        # 1. Dense Search (support async query embedding generation)
+        if hasattr(self.embedding_provider, "aembed_query"):
+            query_vec = await self.embedding_provider.aembed_query(query)
+        else:
+            query_vec = self.embedding_provider.embed_query(query)
+
         dense_results_raw = await self.vector_store.search(
             collection=self.collection_name,
             query_vector=query_vec,
@@ -61,7 +63,6 @@ class HybridRetriever(BaseRetriever):
         )
         
         # 2. Deduplicate dense-search results by chunk ID.
-        # (In production, this would query a sparse index like elasticsearch or qdrant sparse vectors)
         results_map = {}
         for r in dense_results_raw:
             chunk_id = r["payload"].get("chunk_id", r["id"])
