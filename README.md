@@ -204,10 +204,6 @@ See [`.env.example`](.env.example) for all required environment variables. At mi
 
 ---
 
-## 📄 License
 
-This project is licensed under the MIT License — see the [LICENSE](LICENSE) file for details.
 =======
-# IPO-Research-Intelligence-Platform
-Enterprise Multi-Agent AI Platform for Automated IPO Prospectus Analysis, Valuation, Financial Intelligence, and Investment Research.
->>>>>>> d8d10f751ced60781a18686e127bcfa03cd935ff
+
